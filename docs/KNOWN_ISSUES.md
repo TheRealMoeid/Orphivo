@@ -1,6 +1,15 @@
 # Known Issues and Verification Notes
 
-This document records issues observed during early local testing. GitHub Issues should be used to track ownership, discussion, priority, and resolution. When the repository is created, create one GitHub Issue per independently actionable problem and link it here if this register remains useful.
+This document records issues and verification gaps observed during early local testing. GitHub Issues are the source of truth for active work, discussion, and resolution status. The following issues were open on 2026-10-13:
+
+- [#1 — Make the test suite runnable in a clean virtual environment](https://github.com/TheRealMoeid/Orphivo/issues/1)
+- [#2 — Test microphone recording and transcription end to end](https://github.com/TheRealMoeid/Orphivo/issues/2)
+- [#3 — Review layout, focus, and Persian RTL behavior](https://github.com/TheRealMoeid/Orphivo/issues/3)
+- [#4 — Standardize project naming on Orphivo](https://github.com/TheRealMoeid/Orphivo/issues/4)
+
+Issues #1 and #4 address known setup/documentation gaps. Issues #2 and #3 are verification/review tasks; their existence does not establish that the reviewed behavior is defective.
+
+Update this register when evidence changes. Do not mark an item resolved until the relevant behavior has been verified.
 
 ## Confirmed from the first test run
 

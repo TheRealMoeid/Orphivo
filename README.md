@@ -1,4 +1,4 @@
-# Persian STT
+# Orphivo — Persian Speech-to-Text
 
 A local-first Windows desktop application for transcribing Persian (Farsi) speech into text. The application uses Python, Tkinter, and a locally stored Faster-Whisper model, with CPU INT8 inference as the current supported configuration.
 

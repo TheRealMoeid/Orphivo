@@ -2,7 +2,7 @@
 
 ## Overview
 
-Persian STT is a local Windows desktop application. The current implementation is organized into a Tkinter user interface and small modules for recording, transcription, preferences, theme configuration, and transcript-file management.
+Orphivo is a local Windows desktop application for Persian speech-to-text. The current implementation is organized into a Tkinter user interface and small modules for recording, transcription, preferences, theme configuration, and transcript-file management.
 
 ## Module responsibilities
 
