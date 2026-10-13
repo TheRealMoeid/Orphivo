@@ -1,0 +1,1 @@
+"""Persian STT application package."""
