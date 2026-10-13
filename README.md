@@ -2,7 +2,7 @@
 
 A local-first Windows desktop application for transcribing Persian (Farsi) speech into text. The application uses Python, Tkinter, and a locally stored Faster-Whisper model, with CPU INT8 inference as the current supported configuration.
 
-> **Project status:** Early development. The GUI has been launched and a short Persian recording produced a visible transcript and an automatically saved text file. Automated test execution still needs environment/import-path cleanup, and several UI/behavior issues remain to be triaged.
+> **Project status:** Early development. The GUI has been launched and a short Persian recording produced a visible transcript and an automatically saved text file. The six existing unit tests pass when run with the project virtual environment after installing pytest; clean-environment setup is tracked in Issue #1. Several UI/behavior checks remain open.
 
 ## Features
 
@@ -60,20 +60,26 @@ Set the model path to the directory containing the converted Faster-Whisper/CTra
 
 ## Tests
 
-Install the test runner in the same environment that will run the tests:
+Install both runtime and development dependencies into the project virtual environment:
 
 ```powershell
-python -m pip install pytest
+python -m pip install -r requirements-dev.txt
 python -m pytest tests -v
 ```
 
-Use `python -m pytest`, rather than a bare `pytest` command, to make it clearer which Python interpreter is running the test suite.
+For a clean environment, create and activate the virtual environment first:
 
-The initial development run exposed two setup issues:
-- `.\.venv\Scripts\python.exe -m pytest` reported that `pytest` was not installed in the virtual environment.
-- The global `pytest` executable collected tests using the global Python interpreter and could not import `src`.
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.txt
+python -m pytest tests -v
+```
 
-These are test-environment/import-discovery issues, not evidence that the test assertions themselves failed. Fix and verify them before treating the suite as passing.
+Use `python -m pytest` rather than the bare `pytest` executable so the test runner uses the active Python interpreter. `requirements-dev.txt` includes `requirements.txt` and pins the test runner version; regular application installs can continue using `requirements.txt` without installing pytest.
+
+**Latest local verification:** Python 3.12.10 with pytest 9.1.1 collected and passed all six existing tests using `.\.venv\Scripts\python.exe -m pytest tests -v`, after pytest was installed manually. The clean-environment workflow above still needs to be verified before Issue #1 can be considered complete.
 
 ## Project layout
 

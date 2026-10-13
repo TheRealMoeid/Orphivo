@@ -111,7 +111,7 @@ The README reports that a short Persian recording was manually tested and produc
 
 ### Verification status
 
-- **Automated tests:** six test functions are present in `tests/` (three history tests and three settings tests). A passing run has not been established. The virtual environment previously lacked pytest, and a global pytest invocation failed collection because `src` could not be imported.
+- **Automated tests:** six test functions are present in `tests/` (three history tests and three settings tests). On 2026-10-13, all six passed using Python 3.12.10 and pytest 9.1.1 after pytest was installed manually in `.venv`. A clean-environment install using the new development requirements still needs verification.
 - **End-to-end recording/transcription:** partial manual smoke-test evidence exists; failure cases, long recordings, accuracy, and responsiveness remain to be verified.
 - **UI and RTL behavior:** the interface includes a right-aligned text tag for transcript content, but the full layout, mixed-direction text, focus, and resizing behavior have not been systematically reviewed.
 - **GPU diagnostic:** `test_gpu.py` attempts CUDA and then CPU fallback. It is a diagnostic script, not evidence that GPU support is required or currently working.
@@ -168,8 +168,8 @@ Issue #4 can be partially addressed as a documentation-only change without waiti
 
 ### Confirmed setup/documentation gaps
 
-- `requirements.txt` currently lists only `faster-whisper==1.2.1`, `sounddevice==0.5.6`, and `numpy>=2.0`. It does not include pytest.
-- Earlier evidence recorded in `README.md` and `docs/KNOWN_ISSUES.md`: pytest was absent from `.venv`; a global pytest command failed test collection with `ModuleNotFoundError: No module named 'src'`. Re-run with the intended virtual environment before choosing the fix.
+- `requirements.txt` lists the runtime dependencies (`faster-whisper==1.2.1`, `sounddevice==0.5.6`, and `numpy>=2.0`). Development dependencies are declared separately in `requirements-dev.txt`, which includes the runtime requirements and pins `pytest==9.1.1`.
+- The first test attempt confirmed that pytest was absent from `.venv`. After a manual install, `.\.venv\Scripts\python.exe -m pytest tests -v` collected and passed all six tests. A previous bare global `pytest` invocation failed to import `src`; that failure was not reproduced when using the project's virtual-environment interpreter with `python -m pytest`. Continue using the documented interpreter-specific command.
 - Naming is inconsistent between the GitHub repository name and existing README/application/settings identifiers.
 
 ### Unverified behavior / areas to investigate
@@ -222,14 +222,16 @@ If the branch already exists locally, use `git switch issue/1-test-environment` 
 
 ### Testing
 
-Use the same Python interpreter for dependency installation and tests. Once Issue #1 establishes the canonical command, document it here and in the README. The currently documented manual command is:
+Use the same Python interpreter for dependency installation and tests. Install runtime and development dependencies with:
 
 ```powershell
-python -m pip install pytest
+python -m pip install -r requirements-dev.txt
 python -m pytest tests -v
 ```
 
-This command is a temporary documented workaround, not a verified clean-environment solution. The project should settle on a declared development-dependency approach as part of Issue #1. Do not report the tests as passing until the command has actually run successfully.
+For a new environment, create and activate `.venv` with Python 3.12 before installing the development requirements. `requirements-dev.txt` includes `requirements.txt` and pins pytest to the version used in the successful local test run.
+
+**Verification recorded on 2026-10-13:** after manually installing pytest 9.1.1 into `.venv`, `.\.venv\Scripts\python.exe -m pytest tests -v` reported `6 passed in 0.14s` under Python 3.12.10. The fresh-environment workflow using `requirements-dev.txt` is not yet verified; do not close Issue #1 until it has been tested from a clean environment.
 
 Manual microphone/model checks must be performed on the target Windows environment. Avoid depending on a real microphone or the large local model in ordinary unit tests.
 

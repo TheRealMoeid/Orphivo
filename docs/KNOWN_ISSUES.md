@@ -13,27 +13,25 @@ Update this register when evidence changes. Do not mark an item resolved until t
 
 ## Confirmed from the first test run
 
-### 1. Test runner is not installed in the project virtual environment
+### 1. Development dependency declaration and clean-environment verification
 
-**Evidence:** `.\.venv\Scripts\python.exe -m pytest tests -v` returned `No module named pytest`.
+**Evidence:** The first attempt, `.\.venv\Scripts\python.exe -m pytest tests -v`, returned `No module named pytest`. After pytest 9.1.1 was installed manually into the virtual environment, the same command collected and passed all six tests under Python 3.12.10.
 
-**Impact:** The project's own virtual environment cannot run the test suite until the test dependency is installed.
+**Impact:** A newly created virtual environment cannot run the test suite unless the development test dependency is installed.
 
-**Recommended action:** Add `pytest` to a development dependency file (for example, `requirements-dev.txt`) and install it using the venv's interpreter. Keep runtime and development dependencies clearly separated if practical.
+**Change proposed in this issue:** Add `requirements-dev.txt`, include the runtime requirements, and pin pytest to the version used for the passing run. Keep pytest out of `requirements.txt`.
 
-**Verification:** `.\.venv\Scripts\python.exe -m pytest tests -v` should collect and execute tests using the virtual environment.
+**Remaining verification:** Create a fresh Python 3.12 virtual environment, install `requirements-dev.txt`, and run `python -m pytest tests -v`. Keep Issue #1 open until this clean-environment workflow is verified.
 
-### 2. Test imports fail when using the global pytest executable
+### 2. Import failure with a global pytest executable
 
 **Evidence:** The bare `pytest tests -v` command ran under `C:\Users\VAHABI\AppData\Local\Programs\Python\Python312\python.exe` and failed collection with `ModuleNotFoundError: No module named 'src'` in `tests/test_history.py` and `tests/test_settings.py`.
 
-**Impact:** Tests do not reach assertion execution in this invocation.
+**Impact:** Tests do not reach assertion execution when invoked with that global interpreter.
 
-**Likely area to investigate:** Test discovery/import configuration and whether the test command is using the intended interpreter. Do not assume this is solely a packaging defect until the tests are rerun with the venv interpreter.
+**Latest evidence:** The import error was not reproduced when running `.\.venv\Scripts\python.exe -m pytest tests -v`; all six tests passed. This indicates that the command was using a different Python environment, and does not currently justify adding pytest import-path configuration.
 
-**Recommended action:** First install pytest into `.venv` and run `python -m pytest`. If imports still fail, add a deliberate package/test configuration (for example, `pyproject.toml` with pytest settings and an installable project package) rather than relying on incidental working-directory behavior.
-
-**Verification:** All tests collect and run from the documented command in a clean virtual environment.
+**Recommended action:** Use the documented `python -m pytest` command from the activated project virtual environment. Revisit import configuration only if the failure can be reproduced in that environment.
 
 ## Manual observations from the screenshot
 
