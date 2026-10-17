@@ -2,7 +2,7 @@
 
 A local-first Windows desktop application for transcribing Persian (Farsi) speech into text. The application uses Python, Tkinter, and a locally stored Faster-Whisper model, with CPU INT8 inference as the current supported configuration.
 
-> **Project status:** Early development. The GUI has been launched and a short Persian recording produced a visible transcript and an automatically saved text file. The six existing unit tests pass when run with the project virtual environment after installing pytest; clean-environment setup is tracked in Issue #1. Several UI/behavior checks remain open.
+> **Project status:** Early development. The GUI has been launched and a short Persian recording produced a visible transcript and an automatically saved text file. All six existing unit tests pass in a fresh Python 3.12.10 virtual environment after installing `requirements-dev.txt`. Several UI/behavior checks remain open.
 
 ## Features
 
@@ -79,7 +79,7 @@ python -m pytest tests -v
 
 Use `python -m pytest` rather than the bare `pytest` executable so the test runner uses the active Python interpreter. `requirements-dev.txt` includes `requirements.txt` and pins the test runner version; regular application installs can continue using `requirements.txt` without installing pytest.
 
-**Latest local verification:** Python 3.12.10 with pytest 9.1.1 collected and passed all six existing tests using `.\.venv\Scripts\python.exe -m pytest tests -v`, after pytest was installed manually. The clean-environment workflow above still needs to be verified before Issue #1 can be considered complete.
+**Latest clean-environment verification (2026-10-17):** Created a fresh `.venv-issue1` virtual environment with Python 3.12.10, upgraded pip, installed `requirements-dev.txt`, and ran `python -m pytest tests -v` through that environment. All six tests passed (`6 passed in 0.16s`). This confirms the documented clean-environment workflow; the test suite did not reproduce the earlier `src` import error. The temporary environment was used for verification and is not part of the repository.
 
 ## Project layout
 

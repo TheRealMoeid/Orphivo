@@ -11,17 +11,17 @@ Issues #1 and #4 address known setup/documentation gaps. Issues #2 and #3 are ve
 
 Update this register when evidence changes. Do not mark an item resolved until the relevant behavior has been verified.
 
-## Confirmed from the first test run
+## Test and verification evidence
 
-### 1. Development dependency declaration and clean-environment verification
+### 1. Development dependencies and clean-environment test run
 
-**Evidence:** The first attempt, `.\.venv\Scripts\python.exe -m pytest tests -v`, returned `No module named pytest`. After pytest 9.1.1 was installed manually into the virtual environment, the same command collected and passed all six tests under Python 3.12.10.
+**Initial evidence:** The first attempt, `.\.venv\Scripts\python.exe -m pytest tests -v`, returned `No module named pytest`. After pytest 9.1.1 was installed manually into that virtual environment, the same command collected and passed all six tests under Python 3.12.10.
 
-**Impact:** A newly created virtual environment cannot run the test suite unless the development test dependency is installed.
+**Dependency setup:** `requirements-dev.txt` includes `requirements.txt` and pins pytest to `9.1.1`. Pytest remains a development dependency rather than a runtime requirement.
 
-**Change proposed in this issue:** Add `requirements-dev.txt`, include the runtime requirements, and pin pytest to the version used for the passing run. Keep pytest out of `requirements.txt`.
+**Clean-environment verification (2026-10-17):** Created a new `.venv-issue1` environment using Python 3.12.10, upgraded pip, installed `requirements-dev.txt`, and ran `.\.venv-issue1\Scripts\python.exe -m pytest tests -v`; result: `6 passed in 0.16s`. Both test modules collected successfully and no import errors occurred.
 
-**Remaining verification:** Create a fresh Python 3.12 virtual environment, install `requirements-dev.txt`, and run `python -m pytest tests -v`. Keep Issue #1 open until this clean-environment workflow is verified.
+**Result:** The clean-environment workflow is verified for Python 3.12.10. The temporary `.venv-issue1` environment is local-only and is not part of the repository.
 
 ### 2. Import failure with a global pytest executable
 
@@ -29,7 +29,7 @@ Update this register when evidence changes. Do not mark an item resolved until t
 
 **Impact:** Tests do not reach assertion execution when invoked with that global interpreter.
 
-**Latest evidence:** The import error was not reproduced when running `.\.venv\Scripts\python.exe -m pytest tests -v`; all six tests passed. This indicates that the command was using a different Python environment, and does not currently justify adding pytest import-path configuration.
+**Latest evidence (2026-10-17):** The import error was not reproduced in the fresh `.venv-issue1` environment when running `python -m pytest tests -v`; all six tests passed. The earlier global `pytest` failure is consistent with using a different Python environment, although the exact historical cause has not been proven. The clean-environment result does not justify adding pytest import-path configuration.
 
 **Recommended action:** Use the documented `python -m pytest` command from the activated project virtual environment. Revisit import configuration only if the failure can be reproduced in that environment.
 
