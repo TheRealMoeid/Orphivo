@@ -13,6 +13,22 @@ Update this register when evidence changes. Do not mark an item resolved until t
 
 ## Test and verification evidence
 
+### Manual verification for Issue #2 (2026-10-18)
+
+**Environment:** Windows, Python 3.12.10, project virtual environment; local CPU-only Faster-Whisper configuration.
+
+**Verified by the developer:**
+- The existing test suite passed before changes: `6 passed in 0.07s`.
+- A normal recording/transcription workflow completed, and a non-empty transcript was saved in the configured output folder and appeared in history.
+- Short Persian sentences were less accurate than longer sentences. This is an observed quality limitation, not yet attributed to a software defect; model or decoding changes are outside the current verification scope.
+- The UI remained responsive during recording and transcription.
+- Disabling microphone access caused stream initialization to fail with a PortAudio/MME error. The app showed an error dialog; after microphone access was restored, recording worked again.
+- Five-second silent recordings (two attempts) and a one-second silent recording (one attempt) produced no saved transcript. The UI displayed `Transcription complete · not auto-saved` even though the result was empty and auto-save was enabled. This exposed a misleading status message.
+
+**Patch intent:** distinguish empty transcription results from non-empty results that were not auto-saved, avoid showing raw backend details in the normal microphone-start error dialog, and add hardware-independent regression tests for empty-result status and stream-start recovery.
+
+**Still to verify after applying the patch:** run the complete test suite; repeat silent recording and microphone-disable/re-enable checks; test an invalid model path and a transcription exception; verify the UI remains responsive. Accuracy, latency, and fully offline operation are not comprehensively verified.
+
 ### 1. Development dependencies and clean-environment test run
 
 **Initial evidence:** The first attempt, `.\.venv\Scripts\python.exe -m pytest tests -v`, returned `No module named pytest`. After pytest 9.1.1 was installed manually into that virtual environment, the same command collected and passed all six tests under Python 3.12.10.
