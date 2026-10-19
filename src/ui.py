@@ -18,6 +18,15 @@ from .theme import PALETTES
 from .transcriber import PersianTranscriber
 
 
+def _completion_status(result: str, saved: Path | None) -> str:
+    """Return a status that distinguishes empty results from unsaved text."""
+    if not result.strip():
+        return "No speech detected · nothing to save"
+    if saved is not None:
+        return f"Transcription complete · saved to {saved.name}"
+    return "Transcription complete · not auto-saved"
+
+
 class PersianSTTApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -135,7 +144,14 @@ class PersianSTTApp(tk.Tk):
             try:
                 self.recorder.start()
             except Exception as exc:
-                messagebox.showerror("Microphone error", f"Could not start recording. Check Windows microphone permissions and the selected input device.\n\n{exc}", parent=self)
+                # Avoid exposing backend-specific PortAudio/MME details in the
+                # normal dialog; the user-facing action is the same.
+                messagebox.showerror(
+                    "Microphone error",
+                    "Could not start recording. Check Windows microphone permissions "
+                    "and the selected input device, then try again.",
+                    parent=self,
+                )
                 return
             self.record_started = time.monotonic()
             self.record_button.configure(text="■ Stop recording")
@@ -185,11 +201,12 @@ class PersianSTTApp(tk.Tk):
                 event = self.events.get_nowait()
                 if event[0] == "success":
                     _, result, saved = event
+                    result = result.strip()
                     self.transcript.delete("1.0", "end")
                     self.transcript.insert("1.0", result)
                     self.transcript.tag_add("rtl", "1.0", "end")
                     self.current_file = saved
-                    self.status_label.configure(text=(f"Transcription complete · saved to {saved.name}" if saved else "Transcription complete · not auto-saved"))
+                    self.status_label.configure(text=_completion_status(result, saved))
                     self.refresh_history()
                 else:
                     self.status_label.configure(text="Transcription failed")
