@@ -1,90 +1,121 @@
 # Known Issues and Verification Notes
 
-This document records issues and verification gaps observed during early local testing. GitHub Issues are the source of truth for active work, discussion, and resolution status. The following issues were open on 2026-10-13:
+Updated: 2026-10-21
 
-- [#1 — Make the test suite runnable in a clean virtual environment](https://github.com/TheRealMoeid/Orphivo/issues/1)
-- [#2 — Test microphone recording and transcription end to end](https://github.com/TheRealMoeid/Orphivo/issues/2)
-- [#3 — Review layout, focus, and Persian RTL behavior](https://github.com/TheRealMoeid/Orphivo/issues/3)
-- [#4 — Standardize project naming on Orphivo](https://github.com/TheRealMoeid/Orphivo/issues/4)
+GitHub Issues are the source of truth for active work and current
+status. This file records observations and verification evidence; do not
+mark a defect fixed until verified.
 
-Issues #1 and #4 address known setup/documentation gaps. Issues #2 and #3 are verification/review tasks; their existence does not establish that the reviewed behavior is defective.
+## Active GitHub issues
 
-Update this register when evidence changes. Do not mark an item resolved until the relevant behavior has been verified.
+-   [#1 --- Make the test suite runnable in a clean virtual
+    environment](https://github.com/TheRealMoeid/Orphivo/issues/1)
+-   [#2 --- Test microphone recording and transcription end to
+    end](https://github.com/TheRealMoeid/Orphivo/issues/2)
+-   [#3 --- Review layout, focus, and Persian RTL
+    behavior](https://github.com/TheRealMoeid/Orphivo/issues/3)
+-   [#4 --- Standardize project naming on
+    Orphivo](https://github.com/TheRealMoeid/Orphivo/issues/4)
 
-## Test and verification evidence
+## Latest test evidence
 
-### Manual verification for Issue #2 (2026-10-18)
+**Date:** 2026-10-21\
+**Environment:** Windows (`win32`), Python 3.12.10, pytest 9.1.1,
+project virtual environment.
 
-**Environment:** Windows, Python 3.12.10, project virtual environment; local CPU-only Faster-Whisper configuration.
+Command:
 
-**Verified by the developer:**
-- The existing test suite passed before changes: `6 passed in 0.07s`.
-- A normal recording/transcription workflow completed, and a non-empty transcript was saved in the configured output folder and appeared in history.
-- Short Persian sentences were less accurate than longer sentences. This is an observed quality limitation, not yet attributed to a software defect; model or decoding changes are outside the current verification scope.
-- The UI remained responsive during recording and transcription.
-- Disabling microphone access caused stream initialization to fail with a PortAudio/MME error. The app showed an error dialog; after microphone access was restored, recording worked again.
-- Five-second silent recordings (two attempts) and a one-second silent recording (one attempt) produced no saved transcript. The UI displayed `Transcription complete · not auto-saved` even though the result was empty and auto-save was enabled. This exposed a misleading status message.
+``` powershell
+python -m pytest tests -v
+```
 
-**Patch intent:** distinguish empty transcription results from non-empty results that were not auto-saved, avoid showing raw backend details in the normal microphone-start error dialog, and add hardware-independent regression tests for empty-result status and stream-start recovery.
+Result: **13 passed in 0.58s**. This is the pre-change baseline on
+branch `issue/3-ui-rtl-review`. Re-run after implementation. Automated
+tests do not establish visual RTL/caret correctness.
 
-**Still to verify after applying the patch:** run the complete test suite; repeat silent recording and microphone-disable/re-enable checks; test an invalid model path and a transcription exception; verify the UI remains responsive. Accuracy, latency, and fully offline operation are not comprehensively verified.
+## Issue #3 --- Confirmed UI defects
 
-### 1. Development dependencies and clean-environment test run
+Issue: https://github.com/TheRealMoeid/Orphivo/issues/3
 
-**Initial evidence:** The first attempt, `.\.venv\Scripts\python.exe -m pytest tests -v`, returned `No module named pytest`. After pytest 9.1.1 was installed manually into that virtual environment, the same command collected and passed all six tests under Python 3.12.10.
+### 1. Enter triggers recording while Settings is open
 
-**Dependency setup:** `requirements-dev.txt` includes `requirements.txt` and pins pytest to `9.1.1`. Pytest remains a development dependency rather than a runtime requirement.
+**Status:** Confirmed by user; not fixed.
 
-**Clean-environment verification (2026-10-17):** Created a new `.venv-issue1` environment using Python 3.12.10, upgraded pip, installed `requirements-dev.txt`, and ran `.\.venv-issue1\Scripts\python.exe -m pytest tests -v`; result: `6 passed in 0.16s`. Both test modules collected successfully and no import errors occurred.
+**Reproduction:** 1. Run `python app.py`. 2. Open Settings. 3. Press
+Enter.
 
-**Result:** The clean-environment workflow is verified for Python 3.12.10. The temporary `.venv-issue1` environment is local-only and is not part of the repository.
+**Actual:** Recording starts in the main window unexpectedly.
 
-### 2. Import failure with a global pytest executable
+**Expected:** Enter while Settings or an unrelated control has focus
+must not start or stop recording.
 
-**Evidence:** The bare `pytest tests -v` command ran under `C:\Users\VAHABI\AppData\Local\Programs\Python\Python312\python.exe` and failed collection with `ModuleNotFoundError: No module named 'src'` in `tests/test_history.py` and `tests/test_settings.py`.
+**Code lead:** `src/ui.py` binds `<Return>` globally with `bind_all()`
+and `_enter_shortcut()` triggers recording unless the transcript editor
+has focus. Inspect event routing/focus before choosing a fix.
 
-**Impact:** Tests do not reach assertion execution when invoked with that global interpreter.
+**Verify:** Enter in Settings, history list, buttons and other controls;
+preserve appropriate text-editor behavior and intentional recording
+shortcuts.
 
-**Latest evidence (2026-10-17):** The import error was not reproduced in the fresh `.venv-issue1` environment when running `python -m pytest tests -v`; all six tests passed. The earlier global `pytest` failure is consistent with using a different Python environment, although the exact historical cause has not been proven. The clean-environment result does not justify adding pytest import-path configuration.
+### 2. Persian text visually reorders when placing the caret
 
-**Recommended action:** Use the documented `python -m pytest` command from the activated project virtual environment. Revisit import configuration only if the failure can be reproduced in that environment.
+**Status:** Confirmed by user; root cause and fix not yet established.
 
-## Manual observations from the screenshot
+**Reproduction:** 1. Display a Persian transcript in the main text
+editor. 2. Click inside the text to position the caret.
 
-### 3. Settings window and main window are both visible at once
+**Actual:** Text appears to swap visual positions around the caret: text
+before the click appears in front, and text in front appears behind. The
+user supplied before/after screenshots.
 
-The screenshot shows the settings dialog overlapping the main application. This may be intentional while the settings window is open, but the interaction should be reviewed for focus, modality, and positioning.
+**Expected:** Persian text remains correctly ordered during caret
+placement, selection and editing.
 
-**Question to resolve:** Should Settings be a modal dialog that blocks interaction with the main window, or a non-modal window that can remain open alongside it?
+**Code lead:** `src/ui.py` uses `tk.Text` and applies an `rtl` tag
+configured with `justify="right"`. Right alignment is not equivalent to
+full bidirectional text editing.
 
-### 4. Main-window layout and controls need a UI review
+**Plan:** First try a focused solution compatible with Tkinter (Approach
+A). Test Persian-only and mixed Persian/English text, numbers and
+punctuation. Consider a broader RTL approach only if a focused solution
+proves inadequate. Do not replace the UI framework without separate
+discussion and approval.
 
-The screenshot shows a wide transcript area, a history pane, recording control, elapsed time, save/copy controls, and a settings button. The current layout is usable enough for initial testing, but visual polish and resizing behavior still need review.
+### 3. Long-transcript scrolling
 
-Items to verify:
-- Layout behavior at smaller window sizes and when maximized.
-- Clear distinction between recording, processing, success, and error states.
-- Whether the recording control's label and visual state change consistently when recording starts/stops.
-- Whether the theme toggle is visible and usable at the bottom of the main window as intended.
-- Whether Persian text is readable and aligned right-to-left in both themes.
+**Status:** Tested and working; no change needed based on current
+evidence.
 
-These are review items from the screenshot, not confirmed functional defects.
+The user confirmed long transcripts can be scrolled through easily.
 
-### 5. End-to-end audio behavior is not yet fully verified
+## Other UI review items not yet verified
 
-The screenshot shows a short transcript and a status indicating that a transcript file was saved. It does not establish transcription accuracy, microphone error handling, performance across longer recordings, or behavior when the model cannot be loaded.
+These remain review items, not confirmed defects: - Layout at
+minimum/default/maximized window sizes. - Persian punctuation and
+mixed-direction text in dark and light themes. - Keyboard tab order and
+focus visibility. - Settings dialog positioning, initial focus,
+cancel/save/close behavior. - Consistency of recording, processing,
+success and error labels.
 
-**Recommended manual checks:**
-- Record a clear Persian sentence and compare the output with the spoken words.
-- Test a longer recording.
-- Test a missing/blocked microphone.
-- Test a missing or invalid model directory.
-- Confirm the app remains responsive while transcribing.
-- Confirm autosave errors are visible and do not silently discard the transcript.
+## Historical Issue #2 observations
+
+-   Short Persian sentences were reported as less accurate than longer
+    sentences; this is a quality observation, not yet attributed to a
+    code defect.
+-   Blocking microphone access caused stream initialization failure;
+    recording worked again after access was restored.
+-   Silent recordings produced no saved transcript. Status handling for
+    empty output was addressed in earlier work; verify related behavior
+    if that path changes.
 
 ## Triage policy
 
-- Keep one independently actionable bug per GitHub Issue.
-- Include reproduction steps, expected behavior, actual behavior, environment, and logs.
-- Separate confirmed defects from usability questions and future enhancements.
-- Close issues only after the fix is tested and the verification result is recorded.
+-   Separate confirmed defects from hypotheses and enhancements.
+-   Record reproduction steps, expected/actual behavior, environment and
+    verification results.
+-   Add automated regression tests where practical. RTL caret/rendering
+    behavior also needs manual Windows testing.
+-   Close issues only after fixes are verified.
+-   Keep Issue #3 focused on UI behavior; avoid unrelated changes to
+    model configuration, GPU support, persistence architecture or other
+    modules.
