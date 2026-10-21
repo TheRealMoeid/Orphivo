@@ -93,7 +93,9 @@ class PersianSTTApp(tk.Tk):
         self.transcript.pack(fill="both", expand=True)
         self.transcript.tag_configure("rtl", justify="right")
         self.transcript.bind("<KeyRelease>", self._align_text)
-        self.bind_all("<Return>", self._enter_shortcut, add="+")
+        # Bind within the main window's toplevel, not globally. This keeps
+        # Enter in separate dialogs (such as Settings) from toggling recording.
+        self.bind("<Return>", self._enter_shortcut, add="+")
         self.footer = tk.Frame(self.main_panel)
         self.footer.pack(fill="x", pady=(10, 0))
         self.theme_button = tk.Button(self.footer, text="Switch to light theme", command=self.toggle_theme, relief="flat", padx=10, pady=7)
@@ -218,6 +220,14 @@ class PersianSTTApp(tk.Tk):
 
     def _enter_shortcut(self, event=None):
         # Preserve Enter as a newline while the transcript editor has focus.
+        # Keep the shortcut scoped to the main window, even if this handler is
+        # invoked directly or its binding is changed in the future.
+        if event is not None:
+            try:
+                if event.widget.winfo_toplevel() is not self:
+                    return
+            except (AttributeError, tk.TclError):
+                return
         if self.focus_get() == self.transcript:
             return
         if not self.busy:
