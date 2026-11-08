@@ -1,133 +1,203 @@
 # Orphivo — Persian Speech-to-Text
 
-A local-first Windows desktop application for transcribing Persian (Farsi) speech into text. The application uses Python, Tkinter, and a locally stored Faster-Whisper model, with CPU INT8 inference as the current supported configuration.
+Orphivo is a local-first Windows desktop application for transcribing Persian (Farsi) speech into text using a locally stored Faster-Whisper model.
 
-> **Project status:** Early development. The GUI has been launched and a short Persian recording produced a visible transcript and an automatically saved text file. All six existing unit tests pass in a fresh Python 3.12.10 virtual environment after installing `requirements-dev.txt`. Several UI/behavior checks remain open.
+The project aims to provide offline transcription, editable transcripts, automatic saving, and transcript history without relying on paid cloud transcription APIs.
+
+> **Development status — November 8, 2026**
+>
+> The project is currently undergoing a migration from Tkinter to PySide6. The new Qt main window has been implemented and its automated tests pass, but it has not yet been manually launched or tested end to end.
+>
+> The existing `app.py` entry point still launches the Tkinter application. The PySide6 implementation is separate and is not yet the production application.
 
 ## Features
 
-- Record microphone audio and stop recording from the main window.
-- Transcribe Persian speech locally using Faster-Whisper.
-- Display the transcript in a Persian-friendly text area.
-- Automatically save completed transcripts as timestamped `.txt` files.
-- Browse transcript history from the selected output folder.
-- Copy transcript text, save a copy elsewhere, open the output folder, and delete saved transcripts.
-- Configure the transcript folder and automatic saving.
-- Switch between dark and light themes.
-- Store preferences locally between launches.
+### Existing Tkinter application
 
-## Privacy and network behavior
+The established application includes:
 
-Audio transcription is intended to run locally with a model already present on the computer. The app does not need to upload recordings to a hosted transcription service. The model directory is configured in the application and must exist locally.
+- Microphone recording.
+- Local Persian speech-to-text transcription.
+- Editable transcript display.
+- Automatic transcript saving.
+- Transcript history.
+- Persistent application settings.
+- Dark and light themes.
+- Keyboard shortcuts.
 
-The app may still depend on locally installed Python packages. Do not describe the application as fully offline until startup and transcription have been verified with network access disabled.
+### In-progress PySide6 implementation
 
-## Requirements
+The current Qt implementation includes:
 
-- Windows 10/11
-- Python 3.12 (the current development environment uses Python 3.12)
-- A working microphone and Windows microphone permission
-- The existing Faster-Whisper CTranslate2 model at `D:\whisper-large-fa-v1-ct2`, or a corresponding local path configured in the application
-- Project dependencies installed into the same Python environment used to launch the app
+- A Persian-friendly text editor.
+- Right-aligned text with a 14 pt font.
+- Recording controls and elapsed recording duration.
+- Background transcription using Qt threading.
+- Automatic saving of non-empty transcription results.
+- Copy and Save As actions.
 
-The current implementation uses CPU INT8 inference. CUDA/GPU inference is not part of the current setup.
+The Qt implementation is still incomplete. Feature parity with the existing Tkinter application has not been established.
 
-## Setup
+## Technology Stack
 
-Open PowerShell in the project directory:
+- **Language:** Python
+- **Desktop UI:** Tkinter (existing application), PySide6 (migration)
+- **Speech recognition:** Faster-Whisper
+- **Inference backend:** CTranslate2
+- **Audio recording:** sounddevice
+- **Transcription language:** Persian (`fa`)
+- **Compute configuration:** CPU INT8
+- **Transcript format:** UTF-8 `.txt`
+- **Settings storage:** JSON
+
+## Local Model
+
+Orphivo uses a locally stored Faster-Whisper/CTranslate2 model.
+
+The development environment has used this model directory:
+
+```text
+D:\whisper-large-fa-v1-ct2
+```
+
+The model is expected to be available locally. The application is not intended to download a replacement model automatically.
+
+The current verified development configuration uses CPU INT8 inference. CUDA/GPU inference is not part of the established configuration.
+
+## Repository Structure
+
+```text
+Orphivo/
+│
+├── app.py
+├── requirements.txt
+│
+├── src/
+│   ├── ui.py
+│   ├── qt_ui.py
+│   ├── qt_main_window.py
+│   ├── recorder.py
+│   ├── transcriber.py
+│   ├── history.py
+│   ├── settings.py
+│   └── theme.py
+│
+├── tests/
+│   ├── test_history.py
+│   ├── test_qt_ui.py
+│   ├── test_qt_main_window.py
+│   ├── test_recorder.py
+│   ├── test_settings.py
+│   ├── test_ui_shortcuts.py
+│   ├── test_ui_status.py
+│   └── test_ui_worker.py
+│
+└── docs/
+    ├── ARCHITECTURE.md
+    └── KNOWN_ISSUES.md
+```
+
+This is an overview of the relevant project files, not a guarantee that it lists every file in the repository.
+
+## Installation
+
+The development environment used for the latest reported test run:
+
+- Windows
+- Python 3.12.10
+- pytest 9.1.1
+- Project virtual environment
+
+Create and activate a virtual environment:
 
 ```powershell
-# Activate the project's virtual environment
+py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
+```
 
-# Install runtime dependencies into that environment
+Install project dependencies:
+
+```powershell
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+```
 
-# Launch the application
+Make sure the local Faster-Whisper model is available and that the configured model directory is correct.
+
+## Running the Application
+
+### Existing Tkinter application
+
+The current application entry point remains:
+
+```powershell
 python app.py
 ```
 
-If the virtual environment has not been created yet:
+This launches the existing Tkinter implementation.
+
+### Experimental PySide6 application
+
+The new Qt main window can be launched separately using:
 
 ```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python -c "from PySide6.QtWidgets import QApplication; from src.qt_main_window import OrphivoMainWindow; app = QApplication([]); window = OrphivoMainWindow(); window.show(); app.exec()"
 ```
 
-Set the model path to the directory containing the converted Faster-Whisper/CTranslate2 model files. No model download is performed by the app.
+**Important:** This command has not yet been manually tested by the user. Real microphone recording, transcription, saving, and shutdown behavior through the Qt window remain unverified.
 
-## Tests
+Do not replace the existing `app.py` entry point until the Qt implementation has been manually tested and the remaining migration requirements have been reviewed.
 
-Install both runtime and development dependencies into the project virtual environment:
+## Running Tests
+
+Run the test suite from the repository root:
 
 ```powershell
-python -m pip install -r requirements-dev.txt
 python -m pytest tests -v
 ```
 
-For a clean environment, create and activate the virtual environment first:
+### Latest test result
 
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements-dev.txt
-python -m pytest tests -v
-```
+\<text>**Date:** November 8, 2026\</text>
 
-Use `python -m pytest` rather than the bare `pytest` executable so the test runner uses the active Python interpreter. `requirements-dev.txt` includes `requirements.txt` and pins the test runner version; regular application installs can continue using `requirements.txt` without installing pytest.
+\<text>**Environment:** Windows, Python 3.12.10, pytest 9.1.1\</text>
 
-**Latest clean-environment verification (2026-10-17):** Created a fresh `.venv-issue1` virtual environment with Python 3.12.10, upgraded pip, installed `requirements-dev.txt`, and ran `python -m pytest tests -v` through that environment. All six tests passed (`6 passed in 0.16s`). This confirms the documented clean-environment workflow; the test suite did not reproduce the earlier `src` import error. The temporary environment was used for verification and is not part of the repository.
+\<text>**Result:** 23 passed in 0.77 seconds.\</text>
 
-## Project layout
+The reported test run includes the Qt main-window tests and the existing application tests.
+
+Passing automated tests do not establish that the Qt interface works correctly with a real microphone, the local model, or the complete application workflow. Manual verification is still required.
+
+## Development Status
+
+The current UI migration is tracked in:
+
+[Issue #12 — Migrate desktop interface from Tkinter to PySide6](https://github.com/TheRealMoeid/Orphivo/issues/12)
+
+The latest reported development branch is:
 
 ```text
-.
-├── app.py                 # Application entry point
-├── src/
-│   ├── __init__.py
-│   ├── history.py         # Read, save, list, and manage transcript files
-│   ├── recorder.py        # Microphone recording
-│   ├── settings.py        # Persistent application preferences
-│   ├── theme.py           # Dark/light theme definitions
-│   ├── transcriber.py     # Faster-Whisper model loading and transcription
-│   └── ui.py              # Tkinter application and windows
-├── tests/
-│   ├── test_history.py
-│   └── test_settings.py
-├── test_persian_stt.py    # Existing manual/model test; preserve
-├── test_gpu.py            # Existing GPU diagnostic; preserve
-└── persian_test.wav       # Existing sample recording; preserve
+feature/pyside6-ui-migration
 ```
 
-Some files in the tree may be added or changed during development. Update this section when the repository structure changes.
+The migration currently has these boundaries:
 
-## Known limitations
+| Component                           | Status                  |
+| ----------------------------------- | ----------------------- |
+| Existing Tkinter application        | Existing implementation |
+| PySide6 RTL/editor proof of concept | Implemented             |
+| PySide6 main-window shell           | Implemented             |
+| Qt automated tests                  | Passing                 |
+| Manual Qt launch and smoke test     | Not performed           |
+| Complete Qt feature parity          | Not established         |
+| `app.py` switched to Qt             | Not done                |
 
-See [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) for the current issue register. Use GitHub Issues as the source of truth for active work, priorities, reproduction steps, and resolution status.
+## Development Guidelines
 
-## Issue tracking
-
-Please report bugs and propose improvements through the repository's **GitHub Issues** tab. Include:
-- Windows version and Python version
-- Steps to reproduce
-- Expected behavior and actual behavior
-- Relevant terminal output or traceback
-- Whether the issue occurs with the CPU configuration
-
-Do not attach private recordings or sensitive transcripts unless you have checked their contents and intentionally chosen to share them.
-
-## Development workflow
-
-1. Read the existing documentation and open GitHub Issues before starting work.
-2. Reproduce the issue and record the expected/actual behavior.
-3. Discuss the proposed fix and its risks before implementation when the change affects architecture or user-visible behavior.
-4. Make one focused change per issue and add/update tests.
-5. Run the tests using the project virtual environment.
-6. Update documentation and close the issue only after verification.
-
-## License
-
-No license has been selected yet. Until one is added, do not assume that the repository grants permission to reuse, modify, or redistribute its code.
+- Keep transcription local; do not introduce hosted transcription APIs without an explicit change in project requirements.
+- Preserve the existing local model and CPU INT8 configuration unless a dedicated task requires otherwise.
+- Keep transcript files in ordinary UTF-8 text format.
+- Avoid introducing a database without a documented requirement.
+- Preserve existing functionality during the UI migration.
+- Verify behavior on Windows, especially microphone recording and Persian text editing.
+- Keep changes focused on one issue or task per branch.
