@@ -1,6 +1,6 @@
 # Project Context and AI Handoff
 
-**Last updated:** November 8, 2026  
+**Last updated:** November 14, 2026  
 **Repository:** https://github.com/TheRealMoeid/Orphivo  
 **Project:** Local-first Persian speech-to-text desktop application  
 **Current focus:** Tkinter-to-PySide6 migration
@@ -28,9 +28,9 @@ The project does not depend on paid cloud transcription APIs.
 
 The project is currently undergoing a migration from Tkinter to PySide6.
 
-The existing Tkinter application remains the production implementation. The new PySide6 interface has a main-window implementation and automated tests, but has not yet been manually launched by the user.
+The existing Tkinter application remains the production implementation. The new PySide6 interface has a main-window implementation, automated tests, and its core workflow has been manually launched and verified by the user. The four feature-parity gaps identified on November 8 (theme, in-Qt settings, history panel, Enter shortcut) were each scoped as their own task and are now implemented and manually verified (section 5, Stage 4).
 
-**Do not assume the migration is complete.**
+**Do not assume the migration is complete — three secondary verification items remain (idle-state close, long-inference responsiveness, a manually-triggered transcription failure), and `app.py` has not been switched.**
 
 ### Current implementation
 
@@ -39,34 +39,45 @@ The existing Tkinter application remains the production implementation. The new 
 | Production entry point | `app.py` | Launches Tkinter |
 | Tkinter application | `src/ui.py` | Existing implementation |
 | Qt editor proof of concept | `src/qt_ui.py` | Implemented |
-| Qt main window | `src/qt_main_window.py` | Implemented; not manually verified |
+| Qt main window | `src/qt_main_window.py` | Implemented; core workflow and all four feature-parity gaps manually verified |
+| Qt settings dialog | `src/qt_settings_dialog.py` | Implemented and manually verified |
+| Qt history panel | `src/qt_history_panel.py` | Implemented and manually verified |
 | Audio recording | `src/recorder.py` | Shared component |
 | Transcription | `src/transcriber.py` | Shared component |
 | Transcript history | `src/history.py` | Existing component |
-| Settings | `src/settings.py` | Existing component |
-| Themes | `src/theme.py` | Existing definitions; Qt integration not established |
+| Settings | `src/settings.py` | Existing component, now read by both UIs including theme |
+| Themes | `src/theme.py` | Existing definitions; now integrated into the Qt window via a palette-driven stylesheet |
 
 ### Migration status
 
 - PySide6 dependency has been added to `requirements.txt`.
-- The Qt editor uses a 14 pt font.
-- The Qt main window contains recording controls and an elapsed-time display.
+- The Qt editor uses a 14 pt font with correct RTL/bidi rendering for mixed Persian/English/digit text.
+- The Qt main window contains recording controls, an elapsed-time display, and an Enter-key shortcut to start/stop recording.
 - Transcription runs through a background worker using Qt threading and signals.
 - The Qt interface includes transcript editing, Copy, and Save As actions.
 - The worker automatically saves non-empty transcription results when auto-save is enabled.
 - Temporary audio cleanup is implemented in the Qt transcription workflow.
-- Automated Qt tests are passing in the latest reported test run.
+- An in-window Settings dialog (folder, auto-save, theme) and a transcript history panel (list, open folder, delete, click-to-load) are implemented.
+- Dark/light theme switching is implemented, applied live and persisted.
+- Automated Qt tests are passing in the latest reported test run (32).
+
+### Verified (November 8–14, 2026)
+
+- Manual launch of the Qt main window.
+- Microphone recording through Qt, including the microphone-unavailable error path.
+- End-to-end transcription using the local model (speech and silence cases).
+- Automatic saving through the Qt workflow.
+- Qt shutdown behavior during active recording and during active transcription.
+- Bilingual/RTL text ordering, Copy action and shortcut (after fixes — see Stage 3).
+- Settings dialog, transcript history panel, dark/light theme switching, and the Enter-to-record shortcut (see Stage 4).
 
 ### Not yet verified
 
-- Manual launch of the Qt main window.
-- Actual microphone recording through Qt.
-- End-to-end transcription using the local model.
-- Actual automatic saving through the Qt workflow.
-- Qt shutdown behavior during active operations.
-- Complete feature parity with the Tkinter application.
+- Shutdown behavior while completely idle.
+- UI responsiveness during a long inference run.
+- Transcription-failure error handling against the real model (covered only by automated tests with a mocked transcriber).
 
-The existing `app.py` entry point must not be switched to Qt until the migration has been reviewed and manually verified.
+The existing `app.py` entry point must not be switched to Qt until the three items above have been verified.
 
 ## 3. Current Development Environment
 
@@ -187,7 +198,38 @@ The following command was provided for a future manual launch:
 python -c "from PySide6.QtWidgets import QApplication; from src.qt_main_window import OrphivoMainWindow; app = QApplication([]); window = OrphivoMainWindow(); window.show(); app.exec()"
 ```
 
-Do not claim that the Qt application has been manually tested.
+### Stage 3 — Manual verification and bugfix patch (November 8, 2026)
+
+The user launched `OrphivoMainWindow` via the documented command and manually tested, in order: recording and transcribing real speech (auto-saved correctly); recording silence (correctly produced no save and the expected status message); closing while a transcription was in progress (correctly blocked with a wait message); closing while actively recording (correctly showed a confirm dialog, aborted cleanly on confirmation); Save As with the `.txt` suffix removed from the typed filename (confirmed the code's suffix-forcing is intentional, not a bug); multiple record/stop cycles back to back (duration label and button state reset correctly each time).
+
+Three bugs were found during this pass and fixed in `orphivo-qt-fixes.patch`, applied by the user:
+
+1. Mixed Persian/English/digit text displayed in scrambled visual order — root cause was `QTextOption` only setting alignment, not bidi base direction; fixed with an explicit `setTextDirection(Qt.LayoutDirection.RightToLeft)` in both `qt_ui.py` and `qt_main_window.py`.
+2. `copy_text()` crashed (`self.clipboard()` is not a `QMainWindow` method, also broke the `Ctrl+Shift+C` shortcut) — fixed with `QApplication.clipboard()`.
+3. The microphone-error dialog leaked the raw PortAudio/MME backend error text — fixed to match the Tkinter app's generic message.
+
+Regression tests were added for all three, bringing the suite from 23 to 25 tests. The user applied the patch, ran the full suite (`python -m pytest tests -v`, 25 passed, plus an unrelated pytest-teardown `PermissionError` from a custom Windows temp directory), and manually re-confirmed all three fixes.
+
+A pre-existing, non-UI issue was also observed during this testing: Whisper occasionally hallucinates a plausible Persian sentence on silence/near-silence input. This happened on both the Tkinter and Qt UIs, confirming it is a model/`transcriber.py`-level behavior, not a migration regression. See `docs/KNOWN_ISSUES.md` section 4 for details. No action was taken on it as part of Issue #12.
+
+Full details of all of the above, including the exact checklist status, are in `docs/KNOWN_ISSUES.md` sections 1, 3.4, 3.5, and 4.
+
+### Stage 4 — Feature-parity gaps closed (November 9–14, 2026)
+
+The four gaps identified at the end of Stage 3 (theme, in-Qt settings, history panel, Enter shortcut) were each implemented as their own task, in this order, each delivered and manually verified before moving to the next:
+
+1. **Settings dialog** — new `src/qt_settings_dialog.py`, kept separate from `qt_main_window.py`. Folder (with Browse), auto-save checkbox, and a Dark/Light theme choice; Save stays disabled until something actually changes.
+2. **Transcript history panel** — new `src/qt_history_panel.py`. List of saved transcripts, Open Folder, Delete with confirmation, click-to-load via a signal rather than direct coupling to the editor.
+3. **Theme switching** — `src/theme.py`'s `PALETTES` wired into a palette-driven QSS builder in `qt_main_window.py`; toggle lives in the Settings dialog, applies live, persists.
+4. **Enter-to-record shortcut** — a `keyPressEvent` override on the main window; simpler than Tkinter's equivalent since the Settings dialog is a separate top-level widget in Qt, so no global-binding leak to guard against.
+
+A visual redesign was folded into the history-panel task at the user's request (RTL-appropriate control mirroring, a 3-color triadic accent palette) rather than deferred to its own task, since it was a small, well-specified set of edits. Two further Qt-specific bidi rendering bugs were found and fixed during that work (see `docs/KNOWN_ISSUES.md` section 3.7) — both traced to the same root cause as a `heading`/`status_label` alignment bug from Stage 3: Qt auto-swaps `AlignLeft`/`AlignRight` for RTL-direction widgets unless `Qt.AlignAbsolute` is also set.
+
+The test suite grew from 25 to 32 across this stage; all passing, confirmed by the user after each task.
+
+Full details are in `docs/KNOWN_ISSUES.md` sections 1, 3.6, and 3.7.
+
+**Feature parity with Tkinter is now established for the four gaps tracked since Stage 3.** Three secondary items remain unverified before `app.py` can be considered for switching: idle-state close, long-inference UI responsiveness, and a manually-triggered transcription failure (see section 2 above and `docs/KNOWN_ISSUES.md` section 4).
 
 ## 6. Important Existing Issues
 
@@ -197,7 +239,7 @@ Do not claim that the Qt application has been manually tested.
 
 This is the current development focus.
 
-The migration needs manual verification and a feature-parity review before replacing the Tkinter production entry point.
+Manual verification of the core workflow and all four feature-parity gaps is complete (see Stage 3 and Stage 4 above). Three secondary verification items (idle close, long-inference responsiveness, a manually-triggered transcription failure) remain before replacing the Tkinter production entry point.
 
 ### Issue #3 — UI layout, focus, and Persian RTL behavior
 
@@ -336,9 +378,9 @@ After the user reports results:
 
 ## 10. Immediate Recommended Next Step
 
-Resume the PySide6 migration, but do not start implementing another feature yet.
+The Qt core workflow and all four feature-parity gaps (Stage 3, Stage 4 above) are now manually verified. Do not start re-verifying the items already confirmed in section 2 and `docs/KNOWN_ISSUES.md` sections 1, 3.4, 3.6, and 3.7.
 
-First establish the actual repository state:
+First establish the actual repository state, since the branch may have moved on since this document was last updated:
 
 ```powershell
 cd D:\AI\Orphivo
@@ -348,23 +390,10 @@ git branch --show-current
 git log -1 --oneline
 ```
 
-Then inspect:
+Then work through the three remaining secondary verification items in `docs/KNOWN_ISSUES.md` section 4: closing the app while completely idle, UI responsiveness during a long inference run, and manually triggering a transcription failure against the real model. Only after those are verified should a future `app.py` entry-point switch be planned, as its own separate task.
 
-```text
-src/qt_main_window.py
-src/qt_ui.py
-src/recorder.py
-src/transcriber.py
-src/history.py
-src/settings.py
-tests/test_qt_main_window.py
-tests/test_qt_ui.py
-```
-
-Compare the implementation against the requirements in GitHub Issue #12.
-
-The next AI model should produce a concise assessment of the migration's current state and recommend the next task before generating any patch.
+The next AI model should re-read `docs/KNOWN_ISSUES.md` in full before proposing any new work, since it now holds the authoritative list of what is verified versus still open.
 
 ---
 
-**Handoff principle:** The Qt implementation has passed its reported automated tests, but its real-world workflow remains unverified. Continue from the actual repository state, not assumptions based on this document.
+**Handoff principle:** The Qt implementation's core record/transcribe/save/error/close workflow and all four feature-parity gaps have been manually verified. Three secondary items remain before `app.py` can reasonably be switched. Continue from the actual repository state and from `docs/KNOWN_ISSUES.md`, not from assumptions based on older summaries.
