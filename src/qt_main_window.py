@@ -91,6 +91,12 @@ QPushButton#record_button[recording="true"] {{
 QPushButton#record_button[recording="true"]:hover {{
     background-color: {recording_hover};
 }}
+QPushButton#record_button:disabled,
+QPushButton#record_button[recording="true"]:disabled {{
+    background-color: {palette["panel"]};
+    color: {palette["muted"]};
+    border: 1px solid {palette["border"]};
+}}
 QPlainTextEdit, QLineEdit, QListWidget {{
     background-color: {palette["input"]};
     color: {palette["text"]};
@@ -174,6 +180,15 @@ class OrphivoMainWindow(QMainWindow):
         self.busy = False
         self._thread: QThread | None = None
         self._worker: _TranscriptionWorker | None = None
+        # Text to fall back to once a temporary status message (e.g. "Transcript
+        # copied to clipboard") expires - kept in sync with the real state
+        # (idle/recording/transcribing) so a transient message never gets
+        # permanently stuck after its timer fires.
+        self._base_status_text = "Ready — press Start recording"
+        self._status_revert_timer = QTimer(self)
+        self._status_revert_timer.setSingleShot(True)
+        self._status_revert_timer.setInterval(3000)
+        self._status_revert_timer.timeout.connect(self._revert_status)
 
         self.apply_theme()
 
@@ -379,17 +394,40 @@ class OrphivoMainWindow(QMainWindow):
                     "Could not start recording. Check Windows microphone "
                     "permissions and the selected input device, then try again."
                 )
-                self.status_label.setText(message)
+                self._set_status(message)
                 QMessageBox.warning(self, "Microphone error", message)
                 return
             self.record_started = time.monotonic()
             self.duration_label.setText("00:00")
             self.record_button.setText("■ Stop recording")
             self._set_recording_button_active(True)
-            self.status_label.setText("Recording… press Stop to finish")
+            self._set_status("Recording… press Stop to finish")
             self._duration_timer.start()
             return
         self._stop_recording()
+
+    def _set_status(self, text: str) -> None:
+        """Set the status label as the new permanent/base state.
+
+        Use this for state changes that should stick (recording started,
+        transcription started/finished, errors) - it also cancels any
+        pending temporary-message revert, so a stale revert can't later
+        stomp a newer state change.
+        """
+        self._status_revert_timer.stop()
+        self._base_status_text = text
+        self.status_label.setText(text)
+
+    def _show_temporary_status(self, text: str) -> None:
+        """Show a transient message (e.g. "Transcript copied to clipboard")
+        for a few seconds, then restore whatever the current base status is -
+        without touching self.busy/recording state or disabling anything.
+        """
+        self.status_label.setText(text)
+        self._status_revert_timer.start()
+
+    def _revert_status(self) -> None:
+        self.status_label.setText(self._base_status_text)
 
     def _update_duration(self) -> None:
         if not self.recorder.recording:
@@ -411,15 +449,19 @@ class OrphivoMainWindow(QMainWindow):
             self.record_button.setText("● Start recording")
             self._set_recording_button_active(False)
             self.duration_label.setText("00:00")
-            self.status_label.setText("Recording failed")
+            self._set_status("Recording failed")
             QMessageBox.warning(self, "Recording error", str(exc))
             return
         self._duration_timer.stop()
-        self.record_button.setText("● Start recording")
+        # The disabled record button now carries this state itself (text +
+        # its own muted :disabled style above), so the status line is freed
+        # up for the copy/save/load/settings confirmations - it's cleared
+        # here rather than repeating "Transcribing…" in two places at once.
+        self.record_button.setText("Transcribing…")
         self._set_recording_button_active(False)
         self.record_button.setEnabled(False)
         self.busy = True
-        self.status_label.setText("Transcribing locally on CPU…")
+        self._set_status("")
         thread = QThread(self)
         worker = _TranscriptionWorker(self.transcriber, audio_path, self.output_dir,
                                       bool(self.settings.get("auto_save", True)))
@@ -438,12 +480,12 @@ class OrphivoMainWindow(QMainWindow):
     def _on_transcription_completed(self, result: str, saved: object) -> None:
         self.transcript_editor.setPlainText(result)
         if not result:
-            self.status_label.setText("No speech detected · nothing to save")
+            self._set_status("No speech detected · nothing to save")
         elif isinstance(saved, Path):
-            self.status_label.setText(f"Transcription complete · saved to {saved.name}")
+            self._set_status(f"Transcription complete · saved to {saved.name}")
             self.history_panel.refresh()
         else:
-            self.status_label.setText("Transcription complete · not auto-saved")
+            self._set_status("Transcription complete · not auto-saved")
 
     def _update_placeholder_visibility(self) -> None:
         self._placeholder_label.setVisible(not self.transcript_editor.toPlainText())
@@ -451,18 +493,23 @@ class OrphivoMainWindow(QMainWindow):
     def _load_transcript(self, path: Path) -> None:
         try:
             self.transcript_editor.setPlainText(read_transcript(path))
-            self.status_label.setText(f"Loaded {path.name}")
+            # Temporary: same reasoning as copy_text/save_as - loading an old
+            # transcript from the history panel doesn't change whether we're
+            # currently recording/transcribing, so it must not clobber that
+            # base status permanently.
+            self._show_temporary_status(f"Loaded {path.name}")
         except OSError as exc:
             QMessageBox.critical(self, "Could not open transcript", str(exc))
 
     @Slot(str)
     def _on_transcription_failed(self, error: str) -> None:
-        self.status_label.setText("Transcription failed")
+        self._set_status("Transcription failed")
         QMessageBox.critical(self, "Transcription error", error)
 
     @Slot()
     def _on_transcription_thread_finished(self) -> None:
         self.busy = False
+        self.record_button.setText("● Start recording")
         self.record_button.setEnabled(True)
         self._worker = None
         self._thread = None
@@ -470,16 +517,20 @@ class OrphivoMainWindow(QMainWindow):
     def copy_text(self) -> None:
         text = self.transcript_editor.toPlainText()
         if not text:
-            self.status_label.setText("Transcript is empty"); return
+            self._show_temporary_status("Transcript is empty"); return
         # Clipboard access lives on the application object, not the window -
         # QMainWindow has no clipboard() method.
         QApplication.clipboard().setText(text)
-        self.status_label.setText("Transcript copied to clipboard")
+        # Temporary, not a state change: if transcription is still running
+        # in the background, this must not overwrite the base "Transcribing
+        # locally…" status permanently - it reverts automatically after a
+        # few seconds via _status_revert_timer.
+        self._show_temporary_status("Transcript copied to clipboard")
 
     def save_as(self) -> None:
         text = self.transcript_editor.toPlainText().strip()
         if not text:
-            self.status_label.setText("Nothing to save"); return
+            self._show_temporary_status("Nothing to save"); return
         self.output_dir.mkdir(parents=True, exist_ok=True)
         filename, _ = QFileDialog.getSaveFileName(self, "Save transcript as",
                                                    str(self.output_dir / "transcript.txt"),
@@ -493,7 +544,9 @@ class OrphivoMainWindow(QMainWindow):
             path.write_text(text + "\n", encoding="utf-8")
         except OSError as exc:
             QMessageBox.critical(self, "Save failed", str(exc)); return
-        self.status_label.setText(f"Saved {path.name}")
+        # Temporary: same reasoning as copy_text - must not clobber the base
+        # "Transcribing locally…" status if a transcription is still running.
+        self._show_temporary_status(f"Saved {path.name}")
         self.history_panel.refresh()
 
     def _persist_settings(self) -> None:
@@ -523,11 +576,15 @@ class OrphivoMainWindow(QMainWindow):
             self._persist_settings()
             self.apply_theme()
             self.history_panel.refresh(self.output_dir)
-            self.status_label.setText("Settings saved")
+            # Temporary, same reasoning as copy_text/save_as/_load_transcript:
+            # settings can be opened and saved regardless of whether a
+            # recording or transcription is in progress, so this confirmation
+            # must not permanently overwrite that base status.
+            self._show_temporary_status("Settings saved")
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._thread is not None and self._thread.isRunning():
-            self.status_label.setText("Please wait for transcription to finish before closing.")
+            self._set_status("Please wait for transcription to finish before closing.")
             event.ignore(); return
         if self.recorder.recording:
             answer = QMessageBox.question(self, "Recording in progress",

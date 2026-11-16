@@ -4,15 +4,17 @@ Orphivo is a local-first Windows desktop application for transcribing Persian (F
 
 The project aims to provide offline transcription, editable transcripts, automatic saving, and transcript history without relying on paid cloud transcription APIs.
 
-> **Development status — November 14, 2026**
+> **Development status — November 16, 2026**
 >
-> The project is currently undergoing a migration from Tkinter to PySide6. The Qt main window has been manually launched and its core workflow — recording, local transcription, automatic saving, silence handling, copy/save actions, microphone-error handling, and close behavior during active recording or transcription — has been manually verified on Windows. Several bugs found during that verification (incorrect visual order for mixed Persian/English/digit text, a clipboard crash, a raw backend error shown in the microphone-error dialog) have been fixed and re-verified.
+> The project is undergoing a migration from Tkinter to PySide6. The Qt main window has been manually launched and its core workflow — recording, local transcription, automatic saving, silence handling, copy/save actions, microphone-error handling, and close behavior during active recording or transcription — has been manually verified on Windows.
 >
-> The four previously identified feature-parity gaps are now closed and manually verified: an in-window Settings dialog (output folder, auto-save, and theme), a transcript history panel (list, open folder, delete, click-to-load), dark/light theme switching, and the Enter-key recording shortcut. See `docs/KNOWN_ISSUES.md` for the full verification record.
+> All four previously identified feature-parity gaps are implemented and manually verified: an in-window Settings dialog (output folder, auto-save, and theme), a transcript history panel (list, open folder, delete, click-to-load), dark/light theme switching, and the Enter-key recording shortcut.
 >
-> A few secondary items remain unverified: closing the app while completely idle, UI responsiveness during a long inference run, and manually-triggered transcription-failure handling (currently covered only by automated tests, not a real failure). None are expected to be problems, but none have been confirmed either.
+> **All three secondary verification items are now closed as well:** closing the app while completely idle (clean, no issues), UI responsiveness during a long inference run (confirmed via a real ~7m14s recording / ~4min transcription, with CPU/memory logging showing the window stayed interactive throughout), and manually triggering a transcription failure against the real model (two distinct real failures reproduced — a missing model directory and a corrupted model file — both surfaced a readable error dialog and the app returned to a normal, usable state afterward).
 >
-> The existing `app.py` entry point still launches the Tkinter application. The PySide6 implementation is separate and is not yet the production application — that switch is pending the three items above.
+> During the long-inference test, a real bug was found and fixed: clicking Copy, Save As, loading a transcript from history, or saving Settings while a transcription was still running would briefly show the right confirmation message, then have it silently overwritten when the transcription finished. This is fixed — those actions now show their confirmation for a few seconds before correctly reverting to whatever the real state actually is, and the buttons were deliberately kept enabled throughout rather than disabled during busy state. A related UX improvement was made at the same time: the record button now reads "Transcribing…" with its own muted styling while busy, instead of just going an unreadable, unexplained gray.
+>
+> The existing `app.py` entry point still launches the Tkinter application. The PySide6 implementation is separate and is not yet the production application. With migration and all verification now complete, the `app.py` entry-point switch is the next planned task, to be scoped and approved separately.
 
 ## Features
 
@@ -36,14 +38,14 @@ The current Qt implementation includes:
 - A Persian-friendly text editor with correct RTL/bidi rendering for mixed Persian/English/digit text.
 - Right-aligned text with a 14 pt font.
 - Recording controls and elapsed recording duration, with an Enter-key shortcut to start/stop (scoped so it doesn't fire while the transcript editor has focus, or while busy).
-- Background transcription using Qt threading.
+- Background transcription using Qt threading, with the record button showing "Transcribing…" and a muted disabled style while busy, so the busy state is visually clear rather than looking like an unresponsive button.
 - Automatic saving of non-empty transcription results.
-- Copy and Save As actions.
+- Copy and Save As actions, usable at any time (including during an active transcription) — their confirmation messages display briefly, then correctly revert to whatever the real state is (idle, recording, or transcribing).
 - An in-window Settings dialog: transcript folder, auto-save toggle, and dark/light theme, with the Save button disabled until something actually changes.
 - A transcript history panel: lists saved transcripts, opens the folder, deletes with confirmation, and loads a transcript on click.
 - Dark/light theme switching, applied live and persisted.
 
-The four feature-parity gaps previously tracked here (theme, settings dialog, history panel, Enter shortcut) are now closed and manually verified. A few secondary items (idle-state close, long-inference responsiveness, a manually-triggered transcription failure) remain unverified; see `docs/KNOWN_ISSUES.md`.
+The four feature-parity gaps previously tracked here (theme, settings dialog, history panel, Enter shortcut) are closed and manually verified. The three secondary verification items (idle-state close, long-inference responsiveness, real transcription-failure handling) are also closed and manually verified — see `docs/KNOWN_ISSUES.md` for the full record.
 
 ## Technology Stack
 
@@ -83,6 +85,8 @@ Orphivo/
 │   ├── ui.py
 │   ├── qt_ui.py
 │   ├── qt_main_window.py
+│   ├── qt_settings_dialog.py
+│   ├── qt_history_panel.py
 │   ├── recorder.py
 │   ├── transcriber.py
 │   ├── history.py
@@ -93,6 +97,9 @@ Orphivo/
 │   ├── test_history.py
 │   ├── test_qt_ui.py
 │   ├── test_qt_main_window.py
+│   ├── test_qt_settings_dialog.py
+│   ├── test_qt_history_panel.py
+│   ├── test_qt_status_revert.py
 │   ├── test_recorder.py
 │   ├── test_settings.py
 │   ├── test_ui_shortcuts.py
@@ -143,17 +150,17 @@ python app.py
 
 This launches the existing Tkinter implementation.
 
-### Experimental PySide6 application
+### PySide6 application
 
-The new Qt main window can be launched separately using:
+The Qt main window can be launched separately using:
 
 ```powershell
 python -c "from PySide6.QtWidgets import QApplication; from src.qt_main_window import OrphivoMainWindow; app = QApplication([]); window = OrphivoMainWindow(); window.show(); app.exec()"
 ```
 
-**Status:** This command has been manually run by the user. Real microphone recording, local-model transcription, automatic saving, copy/save actions, microphone-error handling, and shutdown behavior during active recording or transcription have all been manually verified. Feature-parity gaps (theme, settings, history, Enter shortcut) remain, see `docs/KNOWN_ISSUES.md`.
+**Status:** This command has been manually run by the user repeatedly across several verification rounds. Real microphone recording, local-model transcription, automatic saving, copy/save actions, microphone-error handling, shutdown behavior during active recording/transcription, idle-state shutdown, long-inference responsiveness, and real transcription-failure handling have all been manually verified. Feature parity with the Tkinter application (theme, settings, history, Enter shortcut) is established.
 
-Do not replace the existing `app.py` entry point until the remaining feature-parity gaps have been reviewed and a decision has been made on scope.
+The `app.py` entry-point switch has not yet been made; it is the next planned task.
 
 ## Running Tests
 
@@ -165,17 +172,15 @@ python -m pytest tests -v
 
 ### Latest test result
 
-\<text>**Date:** November 14, 2026\</text>
+\<text>**Date:** November 16, 2026\</text>
 
 \<text>**Environment:** Windows, Python 3.12.10, pytest 9.1.1\</text>
 
-\<text>**Result:** 32 passed.\</text>
+\<text>**Result:** 60 passed.\</text>
 
-The reported test run includes the Qt main-window, settings-dialog, and history-panel tests (regression coverage added across the RTL-direction, clipboard, settings, history, theme, and Enter-shortcut work - see `docs/KNOWN_ISSUES.md`), and the existing Tkinter application tests.
+The reported test run includes regression tests for the status-message revert behavior (added this round) alongside the Qt main-window, settings-dialog, history-panel, and existing Tkinter application tests.
 
-A `PermissionError` was separately observed during pytest's own teardown of a custom Windows temp directory in earlier runs, after all tests had already reported `PASSED`. This is a local environment/temp-directory issue unrelated to the test results themselves.
-
-Passing automated tests, together with the manual verification recorded in `docs/KNOWN_ISSUES.md`, establish that the Qt interface's core workflow, settings, history, theme switching, and Enter shortcut all work correctly. Idle-state close, long-inference responsiveness, and a manually-triggered transcription failure remain unverified.
+Passing automated tests, together with the manual verification recorded in `docs/KNOWN_ISSUES.md`, establish that the Qt interface's core workflow, settings, history, theme switching, Enter shortcut, idle-close, long-inference responsiveness, and real transcription-failure handling all work correctly.
 
 ## Development Status
 
@@ -196,12 +201,12 @@ The migration currently has these boundaries:
 | Existing Tkinter application        | Existing implementation |
 | PySide6 RTL/editor proof of concept | Implemented             |
 | PySide6 main-window shell           | Implemented             |
-| Qt automated tests                  | Passing (32)            |
+| Qt automated tests                  | Passing (60)            |
 | Manual Qt launch and smoke test     | Done                    |
 | Qt core workflow (record/transcribe/save/errors/close) | Manually verified |
 | Settings dialog, history panel, theme, Enter shortcut | Implemented and manually verified |
-| Idle close / long-inference responsiveness / manual transcription-failure test | Not verified |
-| `app.py` switched to Qt             | Not done                |
+| Idle close / long-inference responsiveness / real transcription-failure handling | Manually verified |
+| `app.py` switched to Qt             | Not done — next planned task |
 
 ## Development Guidelines
 
