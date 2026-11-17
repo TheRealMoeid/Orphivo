@@ -1,6 +1,6 @@
 # Known Issues and Verification Notes
 
-**Last updated:** November 16, 2026
+**Last updated:** November 17, 2026
 
 GitHub Issues are the source of truth for active work, priorities, and resolution status. This document records known defects, unresolved questions, migration gaps, and available verification evidence.
 
@@ -10,10 +10,10 @@ Do not mark an issue fixed merely because related automated tests pass. Record m
 
 | Area | Current status |
 |---|---|
-| Existing Tkinter application | Still available through `app.py` |
+| Tkinter application (`src/ui.py`) | Kept as fallback; no longer launched by `app.py` |
 | PySide6 editor proof of concept | Implemented |
 | PySide6 main-window shell | Implemented |
-| Qt automated tests | Passing (60) |
+| Qt automated tests | Passing (full suite: 57) |
 | Manual Qt launch | Done |
 | Qt microphone recording | Manually verified, including the microphone-unavailable error path |
 | Qt end-to-end transcription | Manually verified (speech, silence, and two real failure modes — see section 4) |
@@ -29,9 +29,9 @@ Do not mark an issue fixed merely because related automated tests pass. Record m
 | Qt real transcription-failure handling | Manually verified against the actual model, not just a mock (4) |
 | Qt record-button busy-state feedback | Implemented and manually verified (3.8) |
 | Complete feature parity | Established — all four original gaps plus all three secondary verification items are closed |
-| Production entry-point migration | Not done — next planned task |
+| Production entry-point migration | Done — `app.py` launches the Qt window (manually confirmed November 17, 2026) |
 
-The Qt implementation is now functionally complete and fully manually verified. The only remaining item before production is the `app.py` entry-point switch itself, which has not yet been scoped.
+The Qt implementation is functionally complete, fully manually verified, and now launched by `app.py`.
 
 ## 2. Current Migration Issue
 
@@ -39,7 +39,7 @@ The Qt implementation is now functionally complete and fully manually verified. 
 
 [GitHub Issue #12](https://github.com/TheRealMoeid/Orphivo/issues/12)
 
-**Status:** Verification complete; entry-point switch pending.
+**Status:** Verification complete; entry-point switch done. Merge to `main` pending the user's approval.
 
 **Branch:**
 
@@ -65,7 +65,15 @@ feature/pyside6-ui-migration
 - [x] Review feature parity with the existing Tkinter application.
 - [x] Review theme and settings integration.
 - [x] Verify UI responsiveness during a long inference run (3.9).
-- [ ] Decide when the Qt implementation is ready to replace the production entry point — all verification is now done; this is the one remaining open decision/task.
+- [x] Switch the production entry point (`app.py`) to the Qt implementation — done; `python app.py` manually confirmed to open the Qt window.
+
+**Tkinter rollback:** `src/ui.py` is untouched. To launch the Tkinter application manually:
+
+```powershell
+python -c "from src.ui import PersianSTTApp; PersianSTTApp().mainloop()"
+```
+
+To make it the default again, revert the commit that switched `app.py` to Qt.
 
 **Known architectural concern (unchanged, not new):**
 
@@ -108,7 +116,7 @@ The user explicitly considered and rejected disabling the Copy/Save buttons duri
 - Changing the button's text to "Transcribing…" while busy, reverting to "● Start recording" when the worker thread finishes.
 - Clearing the status label to empty for the duration of transcription, instead of repeating the same message — freeing it for the temporary confirmations above without a redundant second "Transcribing…" competing with them.
 
-**Verified fixed:** user confirmed via manual testing (clicking Copy/Save/load/settings-save mid-transcription, watching the message show then correctly revert to the real state — recording, transcribing-with-empty-status-line, or idle — after a few seconds) across all four trigger points, plus the button text/style change. Covered by 8 new regression tests in `tests/test_qt_status_revert.py`, bringing the suite from 55 to 60 (an earlier intermediate run was 57, between the status-revert fix and the button UX fix).
+**Verified fixed:** user confirmed via manual testing (clicking Copy/Save/load/settings-save mid-transcription, watching the message show then correctly revert to the real state — recording, transcribing-with-empty-status-line, or idle — after a few seconds) across all four trigger points, plus the button text/style change. Covered by 8 regression tests in `tests/test_qt_status_revert.py`.
 
 ### 3.9 Long-inference UI responsiveness (verified November 16, 2026)
 
@@ -161,7 +169,7 @@ Temporary-audio-cleanup is still only covered by automated tests, not a separate
 
 ## 5. Automated Test Evidence
 
-**Date:** November 16, 2026
+**Date:** November 17, 2026
 
 **Environment:** Windows, Python 3.12.10, pytest 9.1.1.
 
@@ -170,10 +178,10 @@ python -m pytest tests -v
 ```
 
 ```text
-60 passed
+57 passed
 ```
 
-This run includes `tests/test_qt_status_revert.py` (new this round, 8 tests) alongside all prior Qt and Tkinter coverage.
+This run includes `tests/test_qt_status_revert.py` (8 tests) alongside all other Qt and Tkinter fallback coverage. Earlier revisions of this document reported 60 passed; that was a miscount. The collected count is 57.
 
 ## 6. What Is Now Established
 
@@ -189,7 +197,7 @@ Combining automated tests with the manual verification above:
 - **UI responsiveness during long inference runs.**
 - **Real (non-mocked) transcription-failure handling and recovery.**
 
-Nothing material remains unverified for the migration itself. The one open item is the `app.py` entry-point switch, not yet scoped.
+Nothing material remains unverified for the migration itself. The `app.py` entry-point switch is done and was confirmed by launching `python app.py` manually.
 
 ## 7. Triage and Verification Policy
 
@@ -205,6 +213,7 @@ Nothing material remains unverified for the migration itself. The one open item 
 
 ## 8. Next Recommended Work
 
-1. Commit this round's changes (`qt_main_window.py` status-revert and button-UX fixes, `tests/test_qt_status_revert.py`, and this documentation update) to `feature/pyside6-ui-migration` and push.
-2. Scope the `app.py` entry-point switch as its own explicitly-approved task — not yet discussed in detail. Likely considerations: whether to keep `src/ui.py` available as a fallback/reference, how to communicate the switch to any existing users, and a final smoke test immediately after the switch.
-3. Optionally, as a low-priority follow-up: wrap the corrupted-model-file error (section 4, item 2) in a friendlier message, matching the treatment the microphone-error path already received.
+1. Commit the `app.py` switch and this documentation update to `feature/pyside6-ui-migration` and push.
+2. Merge to `main` once the user explicitly approves.
+3. Optionally, as a later separate task: retire `src/ui.py` and its three test modules once the Qt application has had real use.
+4. Optionally, as a low-priority follow-up: wrap the corrupted-model-file error (section 4, item 2) in a friendlier message, matching the treatment the microphone-error path already received.

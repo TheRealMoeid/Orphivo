@@ -1,9 +1,9 @@
 # Project Context and AI Handoff
 
-**Last updated:** November 16, 2026
+**Last updated:** November 17, 2026
 **Repository:** https://github.com/TheRealMoeid/Orphivo
 **Project:** Local-first Persian speech-to-text desktop application
-**Current focus:** Tkinter-to-PySide6 migration — verification complete, entry-point switch pending
+**Current focus:** Tkinter-to-PySide6 migration complete — `app.py` now launches Qt; merge to `main` pending approval
 
 ---
 
@@ -13,14 +13,14 @@ Orphivo is a local-first Windows desktop application for transcribing Persian (F
 
 ## 2. Current Project State
 
-**The PySide6 migration is functionally complete and fully manually verified.** The existing Tkinter application remains the production implementation via `app.py`, but this is now purely because the entry-point switch itself hasn't been made yet — not because anything is still unverified.
+**The PySide6 migration is complete.** `app.py` was switched to launch the Qt application on November 17, 2026, and `python app.py` was manually confirmed to open the Qt window. The Tkinter implementation (`src/ui.py`) is kept untouched as a fallback.
 
 ### Current implementation
 
 | Component | File | Status |
 |---|---|---|
-| Production entry point | `app.py` | Launches Tkinter — switch not yet made |
-| Tkinter application | `src/ui.py` | Existing implementation |
+| Production entry point | `app.py` | Launches the PySide6 window (switched November 17, 2026) |
+| Tkinter application | `src/ui.py` | Fallback, untouched; no longer launched by `app.py` |
 | Qt editor proof of concept | `src/qt_ui.py` | Implemented |
 | Qt main window | `src/qt_main_window.py` | Implemented; fully manually verified, including status-message and busy-state fixes from this round |
 | Qt settings dialog | `src/qt_settings_dialog.py` | Implemented and manually verified |
@@ -43,11 +43,13 @@ Orphivo is a local-first Windows desktop application for transcribing Persian (F
 - **UI responsiveness during a long inference run** (~7m14s recording, ~4min transcription, confirmed via CPU/memory logging and direct interaction with the app during inference).
 - **Status-message correctness**: Copy/Save As/history-load/settings-saved confirmations now correctly coexist with an in-progress transcription instead of being silently overwritten (bug found and fixed this round).
 - **Record-button busy-state feedback**: the button now visibly communicates "Transcribing…" instead of looking identical to its normal, clickable state.
+- **Entry-point switch**: `python app.py` opens the Qt window (November 17, 2026). Full suite: 57 passed.
 
 ### Not yet done
 
-- The `app.py` entry-point switch itself. This is the only remaining task for Issue #12, and it has not yet been scoped or discussed in detail.
-- This round's code and doc changes have not yet been committed to git.
+- Commit and push the `app.py` switch and this documentation update, if not already done.
+- Merge `feature/pyside6-ui-migration` to `main`, only with the user's explicit approval.
+- Optional, later: retire `src/ui.py` and its three test modules.
 
 ## 3. Current Development Environment
 
@@ -73,7 +75,7 @@ Model directory: `D:\whisper-large-fa-v1-ct2`.
 
 **Branch:** `feature/pyside6-ui-migration` (created from `origin/main` at base commit `29c9c7e`)
 
-**Not yet committed as of this update:** the status-revert fix, the record-button busy-state fix, `tests/test_qt_status_revert.py`, and this round's doc updates (`README.md`, `docs/ARCHITECTURE.md`, `docs/KNOWN_ISSUES.md`, this file).
+**Not yet committed as of this update:** the `app.py` switch and this round's documentation updates (`README.md`, `docs/ARCHITECTURE.md`, `docs/KNOWN_ISSUES.md`, this file). The earlier status-revert and button UX fixes were already committed and pushed.
 
 **Recommended next git action:**
 
@@ -81,11 +83,11 @@ Model directory: `D:\whisper-large-fa-v1-ct2`.
 cd D:\AI\Orphivo
 git status
 git add -A
-git commit -m "Fix status-message revert during transcription; add record-button busy state; close remaining Issue #12 verification items"
+git commit -m "Switch app.py entry point to PySide6; keep Tkinter UI as fallback; update docs"
 git push -u origin feature/pyside6-ui-migration
 ```
 
-Do not merge to `main` yet — confirm with the user before any merge, and the `app.py` switch should land as its own follow-up, separately reviewed.
+Do not merge to `main` yet — confirm with the user before any merge.
 
 ### First action when resuming
 
@@ -115,9 +117,21 @@ With all four feature-parity gaps closed, the three secondary verification items
 
 **A related UX issue was raised and fixed in the same round**: while transcribing, the record button was disabled but looked identical to its normal clickable state, giving no visual indication it was busy rather than broken. Fixed by moving the "Transcribing…" message onto the button itself (with its own muted disabled style) and clearing the status line for that duration, rather than showing the same message in two places. Full detail in `docs/KNOWN_ISSUES.md` section 3.8.
 
-Test suite grew from 32 to 60 across this stage (55 after the first status-revert fix, 57 after extending it to cover history-load and settings-saved, 60 after the record-button UX fix). All changes delivered as complete files (not patches) per established preference, and confirmed passing/working by the user after each round.
+The suite stands at 57 passing tests (earlier revisions of this document reported 60, which was a miscount). All changes delivered as complete files (not patches) per established preference, and confirmed passing/working by the user after each round.
 
-**All migration-blocking verification is now complete.** The only remaining task for Issue #12 is the `app.py` entry-point switch itself.
+**All migration-blocking verification is now complete.**
+
+### Stage 6 — `app.py` entry-point switch (November 17, 2026)
+
+Scoped as its own task. Options weighed: keep `src/ui.py` as a fallback (chosen) versus removing it together with its three test modules (deferred to a possible later cleanup). Only `app.py` and the three `tests/test_ui_*.py` modules referenced `src.ui`, so the switch was a single-file change: `app.py` now creates a `QApplication`, shows `OrphivoMainWindow`, and exits with the app's return code. No `--legacy` flag was added; nothing required it. The full suite ran at 57 passed, and `python app.py` was manually confirmed to open the Qt window.
+
+**Tkinter rollback:** launch it manually with
+
+```powershell
+python -c "from src.ui import PersianSTTApp; PersianSTTApp().mainloop()"
+```
+
+or revert the commit that switched `app.py` to Qt.
 
 ## 6. Important Existing Issues
 
@@ -125,7 +139,7 @@ Test suite grew from 32 to 60 across this stage (55 after the first status-rever
 
 [GitHub Issue #12](https://github.com/TheRealMoeid/Orphivo/issues/12)
 
-All manual verification is complete (Stages 1–5 above). The only remaining step is scoping and executing the `app.py` entry-point switch as its own task.
+All manual verification is complete (Stages 1–5 above) and the `app.py` switch is done (Stage 6). Remaining: merge to `main` with the user's approval.
 
 ### Issue #3 — UI layout, focus, and Persian RTL behavior
 
@@ -169,8 +183,8 @@ Unchanged: review-first, approval-based. Inspect actual repo state and documenta
 
 1. Confirm actual current repo state (`git status`, `git branch --show-current`, `git log -1 --oneline`) since the branch may have moved since this document was last updated.
 2. Commit and push this round's changes if not already done (see section 4 above for the exact commands).
-3. Scope the `app.py` entry-point switch as its own task. This has not yet been discussed — don't assume a plan exists. Open questions likely to come up: should `src/ui.py`/Tkinter be kept as a fallback or removed; does anything besides `app.py` reference the Tkinter entry point; is a final smoke test needed immediately post-switch.
+3. Ask the user whether to merge `feature/pyside6-ui-migration` to `main`; do not merge without explicit approval. Optionally propose retiring `src/ui.py` and its three test modules as a separate, later task.
 
 ---
 
-**Handoff principle:** The PySide6 migration's implementation and verification work is done. The only remaining task under Issue #12 is making the actual `app.py` switch, which is a fresh, unscoped task — treat it as such rather than assuming prior context covers it.
+**Handoff principle:** The PySide6 migration is complete, including the `app.py` switch. Remaining work is administrative (commit, merge approval) plus optional cleanup.

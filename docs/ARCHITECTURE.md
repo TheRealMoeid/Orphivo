@@ -1,7 +1,7 @@
 # Architecture
 
-**Last updated:** November 16, 2026
-**Migration status:** Tkinter → PySide6 (functionally complete; `app.py` switch pending)
+**Last updated:** November 17, 2026
+**Migration status:** Tkinter → PySide6 complete; `app.py` launches the Qt application, Tkinter kept as a fallback
 
 ## 1. Architectural Overview
 
@@ -20,15 +20,37 @@ The application is designed to work without cloud-based transcription services o
 
 The project currently has two UI implementations:
 
-- **Tkinter:** The established application, still launched through `app.py`.
-- **PySide6:** The replacement UI. Fully implemented and manually verified, but not yet wired to the production entry point.
+- **PySide6:** The production UI, launched through `app.py`. Fully implemented and manually verified.
+- **Tkinter:** The previous UI, kept untouched in `src/ui.py` as a fallback. No longer launched by `app.py`.
 
 ## 2. High-Level Component Structure
+
+Production (launched by `app.py`):
 
 ```text
                          app.py
                            |
                            v
+                  PySide6 main window
+                 src/qt_main_window.py
+                           |
+        +---------+--------+--------+-----------------+
+        |         |        |        |                 |
+        v         v        v        v                 v
+ qt_settings_  qt_history_  Recorder  Transcriber    History
+ dialog.py     panel.py   recorder.py transcriber.py history.py
+                              |        |               |
+                              v        v               v
+                         Microphone  Faster-Whisper  Transcript
+                          Capture    / CTranslate2     Files
+                                         |
+                                         v
+                                   Local Model
+```
+
+Legacy Tkinter fallback (not launched by `app.py`, uses the same shared services):
+
+```text
                     Tkinter Application
                         src/ui.py
                            |
@@ -36,41 +58,25 @@ The project currently has two UI implementations:
              |             |             |
              v             v             v
           Recorder     Transcriber     History
-       src/recorder.py src/transcriber.py src/history.py
-             |             |             |
-             v             v             v
-        Microphone    Faster-Whisper   Transcript
-         Capture       / CTranslate2    Files
-                           |
-                           v
-                     Local Model
-```
-
-The PySide6 implementation:
-
-```text
-                    PySide6 UI
-                         |
-              +----------+-----------+----------------+
-              |          |           |                |
-              v          v           v                v
-           qt_ui.py  qt_main_window.py  qt_settings_dialog.py  qt_history_panel.py
-                          |
-                    +-----+-----+
-                    |           |
-                    v           v
-                 Recorder   Transcriber
 ```
 
 ## 3. Core Components
 
 ### 3.1 Application Entry Point — `app.py`
 
-Still launches the Tkinter application through `PersianSTTApp` from `src.ui`. Not yet migrated; the switch is the next planned task now that the Qt implementation is functionally complete and fully verified.
+Launches the PySide6 application: creates the `QApplication`, shows `OrphivoMainWindow` from `src/qt_main_window.py`, and exits with the application's return code. Switched from Tkinter on November 17, 2026; `python app.py` was manually confirmed to open the Qt window.
 
 ### 3.2 Tkinter UI — `src/ui.py`
 
-The established desktop interface. Treated as the behavioral reference during the migration.
+The previous desktop interface, kept untouched as a fallback and behavioral reference. It is no longer launched by `app.py`, and its three test modules still run.
+
+**Rollback:** to launch the Tkinter application manually:
+
+```powershell
+python -c "from src.ui import PersianSTTApp; PersianSTTApp().mainloop()"
+```
+
+To make it the default again, revert the commit that switched `app.py` to Qt.
 
 ### 3.3 PySide6 UI Proof of Concept — `src/qt_ui.py`
 
@@ -205,21 +211,21 @@ Update transcript editor     Auto-save enabled?
 | `tests/test_qt_status_revert.py` | Status-message permanent-vs-temporary revert behavior, record-button busy state |
 | `tests/test_recorder.py` | Audio recorder |
 | `tests/test_settings.py` | Application settings |
-| `tests/test_ui_shortcuts.py` | Existing UI shortcuts |
-| `tests/test_ui_status.py` | Existing UI status behavior |
-| `tests/test_ui_worker.py` | Existing UI worker behavior |
+| `tests/test_ui_shortcuts.py` | Tkinter fallback UI shortcuts |
+| `tests/test_ui_status.py` | Tkinter fallback UI status behavior |
+| `tests/test_ui_worker.py` | Tkinter fallback UI worker behavior |
 
 ```powershell
 python -m pytest tests -v
 ```
 
-**Latest reported result (November 16, 2026):** `60 passed`.
+**Latest reported result (November 17, 2026):** `57 passed`. Earlier revisions reported 60, which was a miscount.
 
 Automated tests, combined with the manual verification recorded throughout this document and in `docs/KNOWN_ISSUES.md`, now cover the complete desktop workflow: microphone, local model (including real failure modes), record/transcribe/save, error handling, close behavior during active operations and while idle, settings, history, theme, the Enter shortcut, and UI responsiveness during long inference runs.
 
 ## 7. Current Architectural Boundaries
 
-1. `app.py` remains connected to the Tkinter application; the switch is a separate, not-yet-started task.
+1. `app.py` launches the PySide6 application. `src/ui.py` (Tkinter) is kept as an untouched fallback; removing it is a separate, future decision.
 2. Shared services (recording, transcription, settings, history) are not duplicated between UIs.
 3. UI code should not depend on private implementation details of shared services (see the recorder note in 3.5 — an existing, not new, concern).
 4. Local transcription remains independent of hosted APIs.
@@ -230,16 +236,15 @@ Automated tests, combined with the manual verification recorded throughout this 
 All migration-blocking verification is now complete. What remains:
 
 - The Qt main window's access to private recorder attributes (`_stream`, `_recording`) during close handling — present identically in the Tkinter app, not a new issue, but still worth evaluating if recorder lifecycle work is ever planned.
-- The production entry point has not been migrated — this is the next planned task, to be scoped and approved on its own.
+- `src/ui.py` and its three test modules remain in the repository as a fallback. Retiring them is an optional future cleanup, not required for anything.
 - The corrupted-model-file failure path surfaces a raw backend error string rather than a wrapped, friendlier message (see 3.6) — a minor, non-blocking polish item if ever prioritized.
 - A pre-existing, out-of-scope model behavior: Whisper occasionally hallucinates plausible Persian text on silence/near-silence input, observed on both UIs. Not a migration regression.
 
 ## 9. Guidance for Future Development
 
-Before implementing additional work (in particular, the `app.py` switch):
+Before implementing additional work:
 
 1. Inspect the current Git branch and working tree.
 2. Read `README.md`, `PROJECT_CONTEXT.md`, and `KNOWN_ISSUES.md`.
-3. Confirm this session's changes (status-revert fix, button UX fix) have actually been committed and pushed — they were not yet committed as of this document's last update.
-4. Review GitHub Issue #12's current state.
-5. Present the `app.py` switch itself as its own scoped task with a clear plan — it has not yet been discussed in detail — before writing any code for it.
+3. Review GitHub Issue #12's current state and whether `feature/pyside6-ui-migration` has been merged to `main`.
+4. If retiring the Tkinter fallback, present it as its own scoped task first (it removes `src/ui.py` and `tests/test_ui_shortcuts.py`, `tests/test_ui_status.py`, `tests/test_ui_worker.py`).

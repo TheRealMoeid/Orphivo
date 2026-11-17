@@ -4,9 +4,9 @@ Orphivo is a local-first Windows desktop application for transcribing Persian (F
 
 The project aims to provide offline transcription, editable transcripts, automatic saving, and transcript history without relying on paid cloud transcription APIs.
 
-> **Development status — November 16, 2026**
+> **Development status — November 17, 2026**
 >
-> The project is undergoing a migration from Tkinter to PySide6. The Qt main window has been manually launched and its core workflow — recording, local transcription, automatic saving, silence handling, copy/save actions, microphone-error handling, and close behavior during active recording or transcription — has been manually verified on Windows.
+> The migration from Tkinter to PySide6 is complete, and `app.py` now launches the PySide6 application. The Qt main window's core workflow — recording, local transcription, automatic saving, silence handling, copy/save actions, microphone-error handling, and close behavior during active recording or transcription — has been manually verified on Windows.
 >
 > All four previously identified feature-parity gaps are implemented and manually verified: an in-window Settings dialog (output folder, auto-save, and theme), a transcript history panel (list, open folder, delete, click-to-load), dark/light theme switching, and the Enter-key recording shortcut.
 >
@@ -14,13 +14,13 @@ The project aims to provide offline transcription, editable transcripts, automat
 >
 > During the long-inference test, a real bug was found and fixed: clicking Copy, Save As, loading a transcript from history, or saving Settings while a transcription was still running would briefly show the right confirmation message, then have it silently overwritten when the transcription finished. This is fixed — those actions now show their confirmation for a few seconds before correctly reverting to whatever the real state actually is, and the buttons were deliberately kept enabled throughout rather than disabled during busy state. A related UX improvement was made at the same time: the record button now reads "Transcribing…" with its own muted styling while busy, instead of just going an unreadable, unexplained gray.
 >
-> The existing `app.py` entry point still launches the Tkinter application. The PySide6 implementation is separate and is not yet the production application. With migration and all verification now complete, the `app.py` entry-point switch is the next planned task, to be scoped and approved separately.
+> `app.py` was switched to the PySide6 application on November 17, 2026, and `python app.py` was manually confirmed to open the Qt window. The Tkinter implementation (`src/ui.py`) is kept untouched as a fallback; see "Running the Application" for how to launch it.
 
 ## Features
 
-### Existing Tkinter application
+### Legacy Tkinter application (fallback)
 
-The established application includes:
+The previous application, kept in `src/ui.py` as a fallback, includes:
 
 - Microphone recording.
 - Local Persian speech-to-text transcription.
@@ -31,9 +31,9 @@ The established application includes:
 - Dark and light themes.
 - Keyboard shortcuts.
 
-### PySide6 implementation
+### PySide6 application (production)
 
-The current Qt implementation includes:
+The production Qt implementation includes:
 
 - A Persian-friendly text editor with correct RTL/bidi rendering for mixed Persian/English/digit text.
 - Right-aligned text with a 14 pt font.
@@ -50,7 +50,7 @@ The four feature-parity gaps previously tracked here (theme, settings dialog, hi
 ## Technology Stack
 
 - **Language:** Python
-- **Desktop UI:** Tkinter (existing application), PySide6 (migration)
+- **Desktop UI:** PySide6 (production), Tkinter (legacy fallback)
 - **Speech recognition:** Faster-Whisper
 - **Inference backend:** CTranslate2
 - **Audio recording:** sounddevice
@@ -140,27 +140,21 @@ Make sure the local Faster-Whisper model is available and that the configured mo
 
 ## Running the Application
 
-### Existing Tkinter application
-
-The current application entry point remains:
+Launch the PySide6 application:
 
 ```powershell
 python app.py
 ```
 
-This launches the existing Tkinter implementation.
+### Rolling back to the Tkinter application
 
-### PySide6 application
-
-The Qt main window can be launched separately using:
+`src/ui.py` is still in the repository, untouched. If the Qt application ever has to be bypassed, launch the Tkinter version directly:
 
 ```powershell
-python -c "from PySide6.QtWidgets import QApplication; from src.qt_main_window import OrphivoMainWindow; app = QApplication([]); window = OrphivoMainWindow(); window.show(); app.exec()"
+python -c "from src.ui import PersianSTTApp; PersianSTTApp().mainloop()"
 ```
 
-**Status:** This command has been manually run by the user repeatedly across several verification rounds. Real microphone recording, local-model transcription, automatic saving, copy/save actions, microphone-error handling, shutdown behavior during active recording/transcription, idle-state shutdown, long-inference responsiveness, and real transcription-failure handling have all been manually verified. Feature parity with the Tkinter application (theme, settings, history, Enter shortcut) is established.
-
-The `app.py` entry-point switch has not yet been made; it is the next planned task.
+To make the Tkinter version the default again, revert the commit that switched `app.py` to Qt.
 
 ## Running Tests
 
@@ -172,13 +166,13 @@ python -m pytest tests -v
 
 ### Latest test result
 
-\<text>**Date:** November 16, 2026\</text>
+**Date:** November 17, 2026
 
-\<text>**Environment:** Windows, Python 3.12.10, pytest 9.1.1\</text>
+**Environment:** Windows, Python 3.12.10, pytest 9.1.1
 
-\<text>**Result:** 60 passed.\</text>
+**Result:** 57 passed.
 
-The reported test run includes regression tests for the status-message revert behavior (added this round) alongside the Qt main-window, settings-dialog, history-panel, and existing Tkinter application tests.
+Earlier revisions of this README reported 60 passed; that was a miscount. The run covers the Qt main-window, settings-dialog, history-panel and status-revert tests alongside the Tkinter fallback tests.
 
 Passing automated tests, together with the manual verification recorded in `docs/KNOWN_ISSUES.md`, establish that the Qt interface's core workflow, settings, history, theme switching, Enter shortcut, idle-close, long-inference responsiveness, and real transcription-failure handling all work correctly.
 
@@ -198,15 +192,15 @@ The migration currently has these boundaries:
 
 | Component                           | Status                  |
 | ----------------------------------- | ----------------------- |
-| Existing Tkinter application        | Existing implementation |
+| Tkinter application (`src/ui.py`)   | Kept as fallback, no longer launched by `app.py` |
 | PySide6 RTL/editor proof of concept | Implemented             |
 | PySide6 main-window shell           | Implemented             |
-| Qt automated tests                  | Passing (60)            |
+| Qt automated tests                  | Passing (57 in the full suite) |
 | Manual Qt launch and smoke test     | Done                    |
 | Qt core workflow (record/transcribe/save/errors/close) | Manually verified |
 | Settings dialog, history panel, theme, Enter shortcut | Implemented and manually verified |
 | Idle close / long-inference responsiveness / real transcription-failure handling | Manually verified |
-| `app.py` switched to Qt             | Not done — next planned task |
+| `app.py` switched to Qt             | Done — manually confirmed to open the Qt window |
 
 ## Development Guidelines
 
