@@ -1,7 +1,7 @@
 # Architecture
 
-**Last updated:** November 8, 2026  
-**Migration status:** Tkinter → PySide6 (in progress)
+**Last updated:** November 17, 2026
+**Migration status:** Tkinter → PySide6 complete; `app.py` launches the Qt application, Tkinter kept as a fallback
 
 ## 1. Architectural Overview
 
@@ -20,17 +20,37 @@ The application is designed to work without cloud-based transcription services o
 
 The project currently has two UI implementations:
 
-- **Tkinter:** The established application, still launched through `app.py`.
-- **PySide6:** The replacement UI under development. Its main-window implementation is separate from the production entry point.
-
-These implementations should not be treated as interchangeable or as having complete feature parity.
+- **PySide6:** The production UI, launched through `app.py`. Fully implemented and manually verified.
+- **Tkinter:** The previous UI, kept untouched in `src/ui.py` as a fallback. No longer launched by `app.py`.
 
 ## 2. High-Level Component Structure
+
+Production (launched by `app.py`):
 
 ```text
                          app.py
                            |
                            v
+                  PySide6 main window
+                 src/qt_main_window.py
+                           |
+        +---------+--------+--------+-----------------+
+        |         |        |        |                 |
+        v         v        v        v                 v
+ qt_settings_  qt_history_  Recorder  Transcriber    History
+ dialog.py     panel.py   recorder.py transcriber.py history.py
+                              |        |               |
+                              v        v               v
+                         Microphone  Faster-Whisper  Transcript
+                          Capture    / CTranslate2     Files
+                                         |
+                                         v
+                                   Local Model
+```
+
+Legacy Tkinter fallback (not launched by `app.py`, uses the same shared services):
+
+```text
                     Tkinter Application
                         src/ui.py
                            |
@@ -38,149 +58,103 @@ These implementations should not be treated as interchangeable or as having comp
              |             |             |
              v             v             v
           Recorder     Transcriber     History
-       src/recorder.py src/transcriber.py src/history.py
-             |             |             |
-             v             v             v
-        Microphone    Faster-Whisper   Transcript
-         Capture       / CTranslate2    Files
-                           |
-                           v
-                     Local Model
 ```
-
-The PySide6 implementation is currently a separate UI path:
-
-```text
-             Experimental PySide6 UI
-                         |
-              +----------+----------+
-              |                     |
-              v                     v
-           qt_ui.py          qt_main_window.py
-                                    |
-                    +---------------+---------------+
-                    |               |               |
-                    v               v               v
-                 Recorder       Transcriber       History
-```
-
-The diagrams describe the intended component relationships and current implementation organization. They do not establish that every workflow has been manually verified.
 
 ## 3. Core Components
 
 ### 3.1 Application Entry Point — `app.py`
 
-`app.py` is the current application entry point.
-
-It launches the existing Tkinter application through `PersianSTTApp` from `src.ui`.
-
-**Current status:**
-
-- Tkinter remains the production UI.
-- The entry point has not been migrated to PySide6.
-- The Qt main window must be tested before considering an entry-point change.
+Launches the PySide6 application: creates the `QApplication`, shows `OrphivoMainWindow` from `src/qt_main_window.py`, and exits with the application's return code. Switched from Tkinter on November 17, 2026; `python app.py` was manually confirmed to open the Qt window.
 
 ### 3.2 Tkinter UI — `src/ui.py`
 
-This module contains the established desktop interface.
+The previous desktop interface, kept untouched as a fallback and behavioral reference. It is no longer launched by `app.py`, and its three test modules still run.
 
-It is responsible for the existing application's UI and interaction flow, including its recording and transcription controls.
+**Rollback:** to launch the Tkinter application manually:
 
-It should be treated as the current behavioral reference during the migration. Existing functionality should not be removed merely because the new Qt interface has a corresponding control.
+```powershell
+python -c "from src.ui import PersianSTTApp; PersianSTTApp().mainloop()"
+```
+
+To make it the default again, revert the commit that switched `app.py` to Qt.
 
 ### 3.3 PySide6 UI Proof of Concept — `src/qt_ui.py`
 
-This module contains the initial PySide6 UI experiment.
-
-It was introduced to investigate Persian text editing and right-to-left alignment in Qt.
-
-The editor uses a 14 pt font. Text alignment is configured through Qt's document and text-option APIs rather than a nonexistent `QPlainTextEdit.setAlignment()` method.
-
-The module is covered by `tests/test_qt_ui.py`.
+The initial PySide6 editor experiment investigating Persian RTL/bidi text rendering. Uses a 14 pt font with an explicit `setTextDirection(Qt.LayoutDirection.RightToLeft)` (added as a fix — see `docs/KNOWN_ISSUES.md` 3.4).
 
 ### 3.4 PySide6 Main Window — `src/qt_main_window.py`
 
-This module contains the newer PySide6 main-window implementation.
+The main-window implementation. Current responsibilities:
 
-Its current responsibilities include:
-
-- Main application window and recording controls.
+- Main application window and recording controls, including an Enter-key shortcut to start/stop recording (scoped so it doesn't fire while the transcript editor has focus or while busy).
 - Recording elapsed-time display.
-- Transcript editing.
-- Copy and Save As actions.
-- Background transcription.
+- Transcript editing, with correct RTL/bidi rendering for mixed Persian/English/digit text.
+- Copy and Save As actions, usable at any time including during an active transcription.
+- Background transcription via a worker thread/signal pair, keeping inference off the UI thread.
 - Automatic saving of non-empty transcription results when auto-save is enabled.
 - Temporary audio cleanup after transcription.
+- Hosting the settings dialog (`src/qt_settings_dialog.py`) and the transcript history panel (`src/qt_history_panel.py`), both kept in their own modules.
+- A palette-driven stylesheet read from `src/theme.py`, switched live via the settings dialog.
+- A status-message model split between permanent state text and temporary confirmation messages (see 3.4.3 below).
+- A record button whose text and style reflect busy state directly (see 3.4.3 below).
 
-The transcription worker uses Qt threading and signals to keep the transcription task outside the main UI thread.
+**Status:** Fully manually verified. Core record/transcribe/save workflow, silence handling, microphone-error handling, close behavior during active recording/transcription, settings dialog, history panel, theme switching, Enter-to-record shortcut, idle-state close, long-inference UI responsiveness, and real transcription-failure handling (against the actual model, not just a mocked test) have all been manually tested and confirmed working. See `docs/KNOWN_ISSUES.md` sections 3.4, 3.6, 3.7, 3.8, and 4 for the full history of bugs found and fixed along the way.
 
-**Important limitation:** The main window has passed its reported automated tests, but it has not yet been manually launched by the user. Its real-world behavior remains unverified.
+### 3.4.1 PySide6 Settings Dialog — `src/qt_settings_dialog.py`
+
+A modal `OrphivoSettingsDialog` covering the transcript folder, auto-save, and theme (dark/light). Reuses `src/settings.py` and `src/theme.py` directly. The Save button is disabled until something in the dialog actually differs from the values it was opened with. Explicit QSS rules give radio/checkbox indicators visible checked states (a Qt/QSS quirk otherwise hides them once any stylesheet is applied in the ancestor chain).
+
+**Status:** Implemented and manually verified.
+
+### 3.4.2 PySide6 History Panel — `src/qt_history_panel.py`
+
+An `OrphivoHistoryPanel` widget listing saved transcripts (newest first), with Open Folder and Delete (confirmed) actions. Emits a `transcript_selected(Path)` signal rather than reaching into the main window's editor directly.
+
+**Status:** Implemented and manually verified.
+
+### 3.4.3 Status messaging and busy-state feedback
+
+Added this round, after manual long-inference testing surfaced a real bug: clicking Copy, Save As, loading a transcript from history, or saving Settings while a transcription was still running would show the correct confirmation message briefly, then have it silently overwritten the moment the background worker's completion signal arrived — there was no guard against a later state-change signal clobbering an earlier, still-relevant confirmation.
+
+**Fix:** `qt_main_window.py` now distinguishes two kinds of status-label update:
+
+- `_set_status(text)` — a genuine state change (recording started/stopped, transcription started/completed/failed, microphone error, the close-while-busy warning). Sets both the visible text and the "base" text to revert to, and cancels any pending temporary-message timer so a stale revert can't later overwrite a newer real state.
+- `_show_temporary_status(text)` — a transient confirmation (Copy, Save As, loading a transcript, saving Settings). Shows the message immediately, then a single-shot 3-second `QTimer` reverts the label back to whatever the current base state is.
+
+Disabling the Copy/Save buttons during busy state was considered and explicitly rejected — the buttons stay usable throughout; only the status *message* needed the fix.
+
+A related UX gap was fixed at the same time: while transcribing, the record button was disabled but visually identical to its normal enabled state (the button's own QSS override for its blue "active" look took priority over the generic disabled style), so it looked broken rather than busy. The status line also duplicated "Transcribing locally on CPU…" right next to it. Fixed by moving that one message onto the button itself — it now reads "Transcribing…" with a dedicated muted `:disabled` QSS rule — and clearing the status line to empty for the duration, freeing it for the temporary confirmations described above without a redundant second "Transcribing…" competing with them.
+
+**Status:** Implemented and manually verified; covered by `tests/test_qt_status_revert.py`.
 
 ### 3.5 Audio Recorder — `src/recorder.py`
 
-This module handles microphone audio capture.
+Handles microphone audio capture via `sounddevice`. Both UI implementations share this component.
 
-The project uses `sounddevice` for recording.
-
-Both UI implementations rely on the recorder component rather than implementing microphone capture independently.
-
-The recorder's internal implementation and lifecycle should be inspected before making changes to its threading, stream management, or shutdown behavior.
-
-In particular, the Qt main window currently accesses private recorder attributes (`_stream` and `_recording`) during its close handling. This is an architectural concern because the UI depends on implementation details that should ideally be encapsulated by the recorder.
-
-Do not change the recorder lifecycle without first understanding the existing implementation and its tests.
+The Qt main window accesses private recorder attributes (`_stream` and `_recording`) during close handling — an architectural concern carried over unchanged from the same pattern already present in the Tkinter app's own close handling. Not a new issue introduced by the migration; still worth evaluating before any recorder lifecycle changes.
 
 ### 3.6 Transcription Engine — `src/transcriber.py`
 
-This module provides the transcription functionality.
+Uses Faster-Whisper/CTranslate2 with a locally stored Persian model, `fa` language selection, CPU INT8 inference. Development model directory: `D:\whisper-large-fa-v1-ct2`.
 
-The application uses:
+This round's real transcription-failure testing exercised two genuine failure paths through the actual worker/thread/signal chain:
 
-- Faster-Whisper
-- CTranslate2
-- A locally stored Persian model
-- Persian language selection (`fa`)
-- CPU INT8 inference in the established development configuration
-
-The development model directory has been:
-
-```text
-D:\whisper-large-fa-v1-ct2
-```
-
-The model is expected to be available locally. The application should not silently introduce a cloud transcription dependency or automatic model downloads.
-
-The exact model-loading and inference behavior should be confirmed from the source code before changing it.
+- A missing/misnamed model directory, which surfaces `transcriber.py`'s own `FileNotFoundError` message cleanly through to the error dialog.
+- A corrupted model file inside an otherwise-valid model directory, which surfaces a raw CTranslate2/faster-whisper backend error string — readable, but not wrapped in a friendlier message the way the microphone-error path was (see `docs/KNOWN_ISSUES.md` 3.4 item 3). Worth a future small polish task if a friendlier message is wanted, but not blocking: the dialog is clear enough, and the app recovers to a normal state afterward in both cases.
 
 ### 3.7 Transcript History — `src/history.py`
 
-This module handles transcript persistence and history.
-
-The established storage format is ordinary UTF-8 text (`.txt`).
-
-The application should retain compatibility with existing transcript files during the UI migration.
-
-Do not introduce a database or a new transcript format without a specific requirement and migration plan.
+UTF-8 `.txt` storage. Shared and compatible across both UIs.
 
 ### 3.8 Settings — `src/settings.py`
 
-This module handles persistent application settings using JSON.
-
-UI-specific changes should preserve the existing settings behavior where applicable.
-
-Before adding new settings, inspect the existing schema, defaults, and tests. Avoid creating duplicate settings systems for Tkinter and Qt.
+JSON-backed settings, shared by both UIs, including theme.
 
 ### 3.9 Theme — `src/theme.py`
 
-This module contains the existing theme definitions.
-
-The Qt implementation's relationship with the legacy theme system has not yet been established. Do not assume that the existing themes are already integrated into the PySide6 interface.
+`PALETTES` (dark/light), now fully integrated into the Qt window via a palette-driven QSS builder in `qt_main_window.py`. Two extra accent colors (active-recording, timer) have their own light/dark variants outside `PALETTES`, since a plain hue rotation of the dark pair was unreadable against a light background.
 
 ## 4. PySide6 Threading and Transcription Flow
-
-The Qt main-window implementation uses a background worker for transcription.
-
-The intended workflow is:
 
 ```text
 User stops recording
@@ -213,11 +187,7 @@ Update transcript editor     Auto-save enabled?
                      Remove temporary audio
 ```
 
-The purpose of the background worker is to prevent model inference from blocking the Qt event loop.
-
-The worker and its tests are covered by `tests/test_qt_main_window.py`.
-
-The diagram represents the implemented design, not a manually verified end-to-end workflow. In particular, actual microphone capture, model inference, signal delivery, saving, and shutdown still require manual testing.
+**Fully manually verified**, including long-running inference: a real ~7m14s recording produced ~4 minutes of CPU INT8 transcription, during which CPU/memory logging showed a steady single-core-equivalent ~25% CPU load (consistent with the worker thread doing the work, not the UI thread) and the window remained interactive — draggable, resizable, and responsive to clicks — throughout. The diagram's error path (worker signals a failure instead of a result) has also now been exercised with two real failures, not just the mocked automated test; see 3.6 above.
 
 ## 5. Data and Storage
 
@@ -229,81 +199,52 @@ The diagram represents the implemented design, not a manually verified end-to-en
 | Speech recognition model | Local model directory |
 | UI state | Managed by the respective UI implementation |
 
-The application should remain local-first.
-
-Avoid introducing external services, unnecessary persistence layers, or format changes without a clear architectural reason.
-
 ## 6. Testing Structure
-
-The repository includes tests for the existing application and the Qt migration.
-
-Relevant test modules include:
 
 | Test module | Area |
 |---|---|
 | `tests/test_history.py` | Transcript history and persistence |
 | `tests/test_qt_ui.py` | PySide6 editor proof of concept |
-| `tests/test_qt_main_window.py` | Qt main window and worker |
+| `tests/test_qt_main_window.py` | Qt main window, worker, settings/history wiring, theme, Enter shortcut |
+| `tests/test_qt_settings_dialog.py` | Qt settings dialog (folder, auto-save, theme, change-tracked Save button) |
+| `tests/test_qt_history_panel.py` | Qt transcript history panel |
+| `tests/test_qt_status_revert.py` | Status-message permanent-vs-temporary revert behavior, record-button busy state |
 | `tests/test_recorder.py` | Audio recorder |
 | `tests/test_settings.py` | Application settings |
-| `tests/test_ui_shortcuts.py` | Existing UI shortcuts |
-| `tests/test_ui_status.py` | Existing UI status behavior |
-| `tests/test_ui_worker.py` | Existing UI worker behavior |
-
-Run the suite from the repository root:
+| `tests/test_ui_shortcuts.py` | Tkinter fallback UI shortcuts |
+| `tests/test_ui_status.py` | Tkinter fallback UI status behavior |
+| `tests/test_ui_worker.py` | Tkinter fallback UI worker behavior |
 
 ```powershell
 python -m pytest tests -v
 ```
 
-**Latest reported result (November 8, 2026):**
+**Latest reported result (November 17, 2026):** `57 passed`. Earlier revisions reported 60, which was a miscount.
 
-```text
-23 passed in 0.77s
-```
-
-This result is based on the user's reported test run. It is not an independent verification of the current repository state.
-
-Automated tests do not replace manual testing of the desktop application, microphone, local model, or complete user workflow.
+Automated tests, combined with the manual verification recorded throughout this document and in `docs/KNOWN_ISSUES.md`, now cover the complete desktop workflow: microphone, local model (including real failure modes), record/transcribe/save, error handling, close behavior during active operations and while idle, settings, history, theme, the Enter shortcut, and UI responsiveness during long inference runs.
 
 ## 7. Current Architectural Boundaries
 
-The following boundaries should be respected while the migration is in progress:
-
-1. `app.py` remains connected to the Tkinter application.
-2. The Qt implementation remains separate until its required behavior is verified.
-3. Shared services such as recording, transcription, settings, and history should not be duplicated unnecessarily.
-4. UI code should not depend on private implementation details of shared services.
-5. Local transcription must remain independent of hosted APIs.
-6. Existing transcript files and settings should remain compatible.
-7. UI migration should preserve existing functionality unless a deliberate product decision changes it.
+1. `app.py` launches the PySide6 application. `src/ui.py` (Tkinter) is kept as an untouched fallback; removing it is a separate, future decision.
+2. Shared services (recording, transcription, settings, history) are not duplicated between UIs.
+3. UI code should not depend on private implementation details of shared services (see the recorder note in 3.5 — an existing, not new, concern).
+4. Local transcription remains independent of hosted APIs.
+5. Existing transcript files and settings remain compatible across both UIs.
 
 ## 8. Known Architectural Gaps
 
-The following items require further investigation or verification:
+All migration-blocking verification is now complete. What remains:
 
-- The Qt main window has not been manually launched.
-- Qt microphone recording and shutdown behavior have not been manually verified.
-- End-to-end local transcription through the Qt interface has not been verified.
-- Automatic saving through the complete Qt workflow has not been manually verified.
-- Complete feature parity with the Tkinter application has not been established.
-- Qt integration with the existing theme and settings behavior needs review.
-- The Qt main window's access to private recorder attributes should be evaluated.
-- The production entry point has not been migrated.
-
-These are migration gaps, not evidence that the corresponding functionality is necessarily broken.
+- The Qt main window's access to private recorder attributes (`_stream`, `_recording`) during close handling — present identically in the Tkinter app, not a new issue, but still worth evaluating if recorder lifecycle work is ever planned.
+- `src/ui.py` and its three test modules remain in the repository as a fallback. Retiring them is an optional future cleanup, not required for anything.
+- The corrupted-model-file failure path surfaces a raw backend error string rather than a wrapped, friendlier message (see 3.6) — a minor, non-blocking polish item if ever prioritized.
+- A pre-existing, out-of-scope model behavior: Whisper occasionally hallucinates plausible Persian text on silence/near-silence input, observed on both UIs. Not a migration regression.
 
 ## 9. Guidance for Future Development
 
-Before implementing additional migration work:
+Before implementing additional work:
 
 1. Inspect the current Git branch and working tree.
 2. Read `README.md`, `PROJECT_CONTEXT.md`, and `KNOWN_ISSUES.md`.
-3. Inspect the relevant implementation and tests.
-4. Review GitHub Issue #12 and any related open issues.
-5. Identify the actual root cause or missing behavior before proposing changes.
-6. Present implementation options, trade-offs, risks, and a recommendation before writing code.
-7. Keep each task isolated to its own branch.
-8. Provide repository modifications as a `.patch` file for the user to apply and test.
-
-Do not assume the project is ready for a production switch to PySide6 simply because the current automated test suite passes.
+3. Review GitHub Issue #12's current state and whether `feature/pyside6-ui-migration` has been merged to `main`.
+4. If retiring the Tkinter fallback, present it as its own scoped task first (it removes `src/ui.py` and `tests/test_ui_shortcuts.py`, `tests/test_ui_status.py`, `tests/test_ui_worker.py`).

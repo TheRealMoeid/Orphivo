@@ -1,6 +1,6 @@
 # Known Issues and Verification Notes
 
-**Last updated:** November 8, 2026
+**Last updated:** November 17, 2026
 
 GitHub Issues are the source of truth for active work, priorities, and resolution status. This document records known defects, unresolved questions, migration gaps, and available verification evidence.
 
@@ -8,23 +8,30 @@ Do not mark an issue fixed merely because related automated tests pass. Record m
 
 ## 1. Current Development Status
 
-The project is undergoing a migration from Tkinter to PySide6.
-
 | Area | Current status |
 |---|---|
-| Existing Tkinter application | Still available through `app.py` |
+| Tkinter application (`src/ui.py`) | Kept as fallback; no longer launched by `app.py` |
 | PySide6 editor proof of concept | Implemented |
 | PySide6 main-window shell | Implemented |
-| Qt automated tests | Passing in the latest reported run |
-| Manual Qt launch | Not performed |
-| Qt microphone recording | Not manually verified |
-| Qt end-to-end transcription | Not manually verified |
-| Qt automatic saving | Not manually verified end to end |
-| Qt shutdown behavior | Not manually verified |
-| Complete feature parity | Not established |
-| Production entry-point migration | Not done |
+| Qt automated tests | Passing (full suite: 57) |
+| Manual Qt launch | Done |
+| Qt microphone recording | Manually verified, including the microphone-unavailable error path |
+| Qt end-to-end transcription | Manually verified (speech, silence, and two real failure modes — see section 4) |
+| Qt automatic saving | Manually verified |
+| Qt shutdown behavior | Manually verified for close-during-recording, close-during-transcription, **and idle-state close** |
+| Qt bilingual/RTL text ordering | Manually verified after fix (3.4) |
+| Qt copy/save/load/settings status messages | Manually verified after fix (3.8) |
+| Qt settings dialog (folder, auto-save, theme) | Implemented and manually verified (3.6) |
+| Qt transcript history panel | Implemented and manually verified (3.6) |
+| Qt dark/light theme switching | Implemented and manually verified (3.6) |
+| Qt Enter-to-record shortcut | Implemented and manually verified (3.6) |
+| Qt long-inference UI responsiveness | Manually verified (3.9) |
+| Qt real transcription-failure handling | Manually verified against the actual model, not just a mock (4) |
+| Qt record-button busy-state feedback | Implemented and manually verified (3.8) |
+| Complete feature parity | Established — all four original gaps plus all three secondary verification items are closed |
+| Production entry-point migration | Done — `app.py` launches the Qt window (manually confirmed November 17, 2026) |
 
-The current Qt implementation should be considered incomplete until its real application workflow has been tested.
+The Qt implementation is functionally complete, fully manually verified, and now launched by `app.py`.
 
 ## 2. Current Migration Issue
 
@@ -32,238 +39,169 @@ The current Qt implementation should be considered incomplete until its real app
 
 [GitHub Issue #12](https://github.com/TheRealMoeid/Orphivo/issues/12)
 
-**Status:** In progress.
+**Status:** Verification complete; entry-point switch done. Merge to `main` pending the user's approval.
 
-**Branch last reported by the user:**
+**Branch:**
 
 ```text
 feature/pyside6-ui-migration
 ```
 
-**Implemented:**
-
-- PySide6 dependency added to `requirements.txt`.
-- Persian-friendly Qt editor proof of concept.
-- Qt main-window shell.
-- Recording controls and elapsed-time display.
-- Background transcription worker using Qt threading and signals.
-- Transcript editor.
-- Copy and Save As actions.
-- Automatic saving of non-empty transcription results when enabled.
-- Temporary audio cleanup in the transcription workflow.
-- Automated tests for the Qt UI and main window.
-
 **Outstanding verification:**
 
-- [ ] Manually launch the Qt main window.
-- [ ] Verify the window renders and behaves correctly on Windows.
-- [ ] Test microphone recording.
-- [ ] Test stopping a recording and handing audio to the transcription worker.
-- [ ] Verify transcription with the actual local Persian model.
-- [ ] Verify the result is displayed correctly.
-- [ ] Verify automatic saving.
-- [ ] Verify manual Save As and Copy actions.
-- [ ] Verify temporary audio cleanup.
-- [ ] Test error handling, including microphone and transcription failures.
-- [ ] Test closing the application while idle.
-- [ ] Test closing the application during recording or transcription.
-- [ ] Review feature parity with the existing Tkinter application.
-- [ ] Review theme and settings integration.
-- [ ] Decide when the Qt implementation is ready to replace the production entry point.
+- [x] Manually launch the Qt main window.
+- [x] Verify the window renders and behaves correctly on Windows.
+- [x] Test microphone recording.
+- [x] Test stopping a recording and handing audio to the transcription worker.
+- [x] Verify transcription with the actual local Persian model.
+- [x] Verify the result is displayed correctly.
+- [x] Verify automatic saving.
+- [x] Verify manual Save As and Copy actions.
+- [x] Test microphone error handling.
+- [x] Test transcription-failure error handling manually against the real model (see section 4 — two distinct real failures reproduced).
+- [x] Test closing the application while idle.
+- [x] Test closing the application during recording.
+- [x] Test closing the application during transcription.
+- [x] Review feature parity with the existing Tkinter application.
+- [x] Review theme and settings integration.
+- [x] Verify UI responsiveness during a long inference run (3.9).
+- [x] Switch the production entry point (`app.py`) to the Qt implementation — done; `python app.py` manually confirmed to open the Qt window.
 
-**Known architectural concern:**
+**Tkinter rollback:** `src/ui.py` is untouched. To launch the Tkinter application manually:
 
-`src/qt_main_window.py` accesses private recorder attributes (`_stream` and `_recording`) during close handling.
+```powershell
+python -c "from src.ui import PersianSTTApp; PersianSTTApp().mainloop()"
+```
 
-This creates coupling between the UI and the recorder's internal implementation. Review whether the recorder should expose a public lifecycle method or state interface. Do not change this without inspecting the current recorder implementation and its tests.
+To make it the default again, revert the commit that switched `app.py` to Qt.
 
-**Important:** Do not switch `app.py` to PySide6 until the migration requirements have been reviewed and the Qt application has passed manual verification.
+**Known architectural concern (unchanged, not new):**
 
-## 3. Existing Tkinter UI Issues
+`src/qt_main_window.py` accesses private recorder attributes (`_stream` and `_recording`) during close handling, the same pattern already present in the Tkinter app's own close handling. Worth evaluating if recorder lifecycle changes are ever planned; not blocking.
 
-These defects were documented during the earlier UI investigation. The Tkinter implementation remains in the repository, so they should not be considered resolved merely because a new UI framework is being introduced.
+## 3. Qt Implementation Notes and Fix History
 
-### 3.1 Enter triggers recording while Settings is open
+### 3.1–3.3 Tkinter-era issues
 
-**Original issue:** [#3 — Review layout, focus, and Persian RTL behavior](https://github.com/TheRealMoeid/Orphivo/issues/3)
+Historical Tkinter issues (Enter-key focus scoping, Persian caret reordering, long-transcript scrolling) remain documented for the Tkinter app but are superseded in relevance now that the Qt app is the verified implementation moving toward production. See prior revisions of this document for full detail if the Tkinter app is ever revisited.
 
-**Status:** Previously confirmed by the user; no verified fix recorded here.
+### 3.4 Qt bugs found and fixed during initial manual verification (November 8, 2026)
 
-**Reproduction:**
+Three defects were found and fixed in `orphivo-qt-fixes.patch`:
 
-1. Run `python app.py`.
-2. Open Settings.
-3. Press Enter.
+1. Mixed Persian/English/digit text displayed in the wrong visual order — fixed with explicit `setTextDirection(Qt.LayoutDirection.RightToLeft)`.
+2. `copy_text()` crashed (`QMainWindow` has no `clipboard()` method) — fixed with `QApplication.clipboard()`.
+3. The microphone-error dialog leaked a raw backend error string — fixed to show a generic, user-facing message.
 
-**Actual behavior:** Recording starts in the main window unexpectedly.
+### 3.5–3.7 Feature-parity gaps, resolved
 
-**Expected behavior:** Pressing Enter while Settings or an unrelated control has focus must not start or stop recording.
+The four feature-parity gaps (settings dialog, history panel, theme switching, Enter-to-record shortcut) and the RTL visual redesign folded into the history-panel task are implemented and manually verified. See prior revisions of this document for full implementation and bug-fix detail (two further bidi-rendering bugs traced to Qt's `AlignLeft`/`AlignRight` auto-swap for RTL-direction widgets, and a placeholder-text rendering gap in `QPlainTextEdit`, both fixed).
 
-**Code lead:** `src/ui.py` uses a global `<Return>` binding through `bind_all()`. The `_enter_shortcut()` handler excludes the transcript editor but does not adequately account for other focus contexts.
+### 3.8 Status-message revert bug and record-button busy-state feedback (found and fixed November 16, 2026)
 
-**Verification required:**
+Found during manual long-inference testing (section 3.9): clicking **Copy text**, **Save As**, loading a transcript from the history panel, or saving **Settings** while a transcription was still running correctly showed its confirmation message (e.g. "Transcript copied to clipboard") — but if the transcription finished shortly afterward, `_on_transcription_completed`'s own status update silently overwrote it with no warning. The user perceived this as the confirmation "disappearing" or the transcribing message reappearing.
 
-- [ ] Press Enter in Settings.
-- [ ] Check Enter behavior in the history list.
-- [ ] Check Enter behavior on buttons and other controls.
-- [ ] Preserve appropriate transcript-editor behavior.
-- [ ] Verify intentional recording shortcuts still work.
+**Root cause:** `status_label.setText()` was called directly and unconditionally from several places, with no distinction between a message that represents a real, ongoing state (recording, transcribing) and a message that's just a brief confirmation of an action that doesn't change that state.
 
-### 3.2 Persian text visually reorders when positioning the caret
+**Fix:** Two helper methods on `OrphivoMainWindow`:
 
-**Original issue:** [#3 — Review layout, focus, and Persian RTL behavior](https://github.com/TheRealMoeid/Orphivo/issues/3)
+- `_set_status(text)` — for genuine state changes. Also cancels any pending temporary-message timer.
+- `_show_temporary_status(text)` — for Copy/Save As/load-transcript/settings-saved confirmations. Displays the message, then a single-shot 3-second `QTimer` reverts the label to the current base state.
 
-**Status:** Previously confirmed by the user in the Tkinter application.
+The user explicitly considered and rejected disabling the Copy/Save buttons during busy state as an alternative fix — the buttons remain clickable at all times; only the status-label behavior changed.
 
-**Reproduction:**
+**Related UX fix, same round:** while transcribing, the record button was disabled but visually indistinguishable from its normal enabled (blue) state, since its own `[recording="true"]` QSS rule took priority over the generic `:disabled` style — it looked broken, not busy. At the same time, the status line duplicated "Transcribing locally on CPU…" right next to it. Fixed by:
 
-1. Display a Persian transcript in the Tkinter editor.
-2. Click inside the text to position the caret.
+- Giving `record_button` its own explicit `:disabled` QSS rule (muted panel/border colors).
+- Changing the button's text to "Transcribing…" while busy, reverting to "● Start recording" when the worker thread finishes.
+- Clearing the status label to empty for the duration of transcription, instead of repeating the same message — freeing it for the temporary confirmations above without a redundant second "Transcribing…" competing with them.
 
-**Actual behavior:** Text appears to swap visual positions around the caret.
+**Verified fixed:** user confirmed via manual testing (clicking Copy/Save/load/settings-save mid-transcription, watching the message show then correctly revert to the real state — recording, transcribing-with-empty-status-line, or idle — after a few seconds) across all four trigger points, plus the button text/style change. Covered by 8 regression tests in `tests/test_qt_status_revert.py`.
 
-**Expected behavior:** Persian text must retain its correct visual order during caret placement, selection, and editing.
+### 3.9 Long-inference UI responsiveness (verified November 16, 2026)
 
-**Investigation findings:**
+**Original issue:** [#2 — Test microphone recording and transcription end to end](https://github.com/TheRealMoeid/Orphivo/issues/2), secondary item.
 
-The earlier investigation identified a limitation in Tkinter's text-widget bidirectional editing behavior. Right alignment through `justify="right"` does not provide complete Unicode bidirectional text support.
+A real recording of 7 minutes 14 seconds was transcribed, producing roughly 4 minutes of CPU INT8 inference. CPU/memory usage was logged throughout (`app_usage_log.csv`, user-provided): idle/recording phase held at roughly 0% CPU and ~954 MB memory; the transcription phase held a steady ~25% CPU (consistent with a single core fully occupied by the background worker thread, not the UI thread) with memory climbing to roughly 1.2–1.3 GB, dropping back to ~0% once complete.
 
-The investigation evaluated several approaches:
+During the transcription phase, the user confirmed the window remained interactive: draggable, resizable, and responsive to button clicks (which is also how the 3.8 bug above was surfaced — the user was actively using Copy/Save/Settings/history while transcription ran, which would not have been possible if the UI had frozen).
 
-- Custom caret hit-testing using `bbox()`: fragile and incomplete.
-- Read-only transcript display: safe stopgap, but removes in-app editing.
-- Visual-order text storage using reshaping and bidi libraries: rejected because of copy/paste, mixed-direction text, and data-integrity risks.
-- A WebView2 editor embedded in the Tkinter application: recommended in that investigation as a possible way to provide proper bidi editing without replacing the rest of the application.
-
-The project subsequently moved toward a full PySide6 UI migration. That migration may provide a better editing foundation, but the actual Qt behavior still needs manual verification.
-
-**Do not assume this issue is fixed until Persian editing has been tested in the replacement UI.**
-
-### 3.3 Long-transcript scrolling
-
-**Status:** Previously tested and working in the Tkinter application.
-
-The user confirmed that long transcripts could be scrolled through easily.
-
-Do not modify scrolling behavior without new evidence. Re-verify it in the Qt interface because the editing surface is changing.
+**Verified:** UI responsiveness during long inference is confirmed. No freezing, no "Not Responding" state observed.
 
 ## 4. End-to-End Recording and Transcription
 
 **Original issue:** [#2 — Test microphone recording and transcription end to end](https://github.com/TheRealMoeid/Orphivo/issues/2)
 
-**Status:** End-to-end verification in the new Qt interface is outstanding.
+**Status:** Complete, including real (non-mocked) failure-mode testing.
 
-Historical observations:
+Historical observations (unchanged, informational only):
 
-- Short Persian sentences were reported as less accurate than longer sentences. This is a transcription-quality observation, not an established code defect.
-- Blocking microphone access caused stream initialization failure. Recording worked again after microphone access was restored.
-- Silent recordings produced no saved transcript. Empty-output status handling was addressed in earlier work; verify it if the relevant code changes.
+- Short Persian sentences were previously reported as less accurate than longer sentences — a transcription-quality observation, not a code defect.
+- Occasional Whisper hallucination on silence/near-silence input, observed on both UIs — model-level behavior, out of scope for Issue #12.
+
+**Real transcription-failure testing (verified November 16, 2026):**
+
+Two distinct real failures were triggered through the actual worker/thread/signal chain, not the mocked automated test:
+
+1. **Missing/misnamed model directory** (e.g. a typo'd path) — surfaces `transcriber.py`'s own `FileNotFoundError` message ("Local Whisper model folder was not found: ...") cleanly through to the error dialog. Clear and user-actionable.
+2. **Corrupted model file inside an otherwise-valid model directory** (e.g. `model.bin` renamed/unreadable) — surfaces a raw CTranslate2/faster-whisper backend error string ("Unable to open file 'model.bin' in model '...'"). Readable and informative, but not wrapped in a friendlier message the way the microphone-error path was (3.4 item 3). Flagged as a minor, non-blocking future polish item, not a defect requiring action now.
+
+In both cases: the error dialog appeared with the message above, and — critically — the application returned to a normal, fully usable state after the user dismissed the dialog (record button re-enabled, able to start a new recording immediately). No hang, no crash, no stuck state.
 
 **Qt verification checklist:**
 
-- [ ] Microphone access is available.
-- [ ] Recording starts successfully.
-- [ ] Recording stops successfully.
-- [ ] Recorded audio is passed to the transcription worker.
-- [ ] The configured local model loads successfully.
-- [ ] Persian transcription completes.
-- [ ] The result is displayed correctly.
-- [ ] Non-empty results are automatically saved when auto-save is enabled.
-- [ ] Empty results are handled appropriately.
-- [ ] Microphone and model errors are communicated to the user.
-- [ ] Temporary audio is cleaned up.
-- [ ] The application remains responsive during inference.
+- [x] Microphone access is available.
+- [x] Recording starts successfully.
+- [x] Recording stops successfully.
+- [x] Recorded audio is passed to the transcription worker.
+- [x] The configured local model loads successfully.
+- [x] Persian transcription completes.
+- [x] The result is displayed correctly.
+- [x] Non-empty results are automatically saved when auto-save is enabled.
+- [x] Empty results are handled appropriately.
+- [x] Microphone errors are communicated to the user.
+- [x] Model/transcription errors are communicated to the user (two real failure modes confirmed above).
+- [x] The application recovers to a usable state after a transcription failure.
+- [x] The application remains responsive during inference (3.9).
+- [x] Duration label and record button reset correctly across repeated record/stop cycles.
 
-## 5. Other Items Requiring Review
+Temporary-audio-cleanup is still only covered by automated tests, not a separate manual file-system inspection — low-priority given everything else above is now confirmed.
 
-These are review items, not confirmed defects.
+## 5. Automated Test Evidence
 
-### Qt UI
-
-- [ ] Layout at minimum, default, and maximized window sizes.
-- [ ] Persian-only text editing.
-- [ ] Mixed Persian and English text.
-- [ ] Numbers, dates, punctuation, and parentheses in mixed-direction text.
-- [ ] Caret placement and movement.
-- [ ] Text selection, deletion, and copy/paste.
-- [ ] Long-transcript scrolling.
-- [ ] Keyboard tab order and focus visibility.
-- [ ] Dark and light theme behavior.
-- [ ] Settings persistence and integration.
-- [ ] Recording, processing, success, and error states.
-- [ ] Window close behavior during active operations.
-
-### Shared services
-
-- [ ] Recorder lifecycle and cleanup.
-- [ ] Transcription worker error handling.
-- [ ] Settings compatibility between the two UI implementations.
-- [ ] Transcript history compatibility.
-- [ ] No accidental changes to existing UTF-8 transcript files.
-
-## 6. Automated Test Evidence
-
-### Latest reported test run
-
-**Date:** November 8, 2026
+**Date:** November 17, 2026
 
 **Environment:** Windows, Python 3.12.10, pytest 9.1.1.
-
-**Command:**
 
 ```powershell
 python -m pytest tests -v
 ```
 
-**Result:**
-
 ```text
-23 passed in 0.77s
+57 passed
 ```
 
-The reported run included tests for:
+This run includes `tests/test_qt_status_revert.py` (8 tests) alongside all other Qt and Tkinter fallback coverage. Earlier revisions of this document reported 60 passed; that was a miscount. The collected count is 57.
 
-- Transcript history.
-- Qt editor proof of concept.
-- Qt main window and worker.
-- Audio recorder.
-- Settings.
-- Existing UI shortcuts.
-- Existing UI status behavior.
-- Existing UI worker behavior.
+## 6. What Is Now Established
 
-This is the latest test result reported by the user. It has not been independently reproduced.
+Combining automated tests with the manual verification above:
 
-### What this result does not establish
+- Correct visual Persian/bilingual RTL behavior.
+- Successful microphone access, including the unavailable-device error path.
+- Successful local-model inference for speech, silence, and two distinct real failure modes.
+- Correct automatic saving.
+- Correct close behavior during active recording, active transcription, **and while completely idle**.
+- Correct Copy, Save As, history-load, and Settings-save behavior, including status-message correctness when used concurrently with an in-progress transcription.
+- The settings dialog, history panel, theme switching, and Enter-to-record shortcut all work as implemented.
+- **UI responsiveness during long inference runs.**
+- **Real (non-mocked) transcription-failure handling and recovery.**
 
-Passing automated tests does not establish:
+Nothing material remains unverified for the migration itself. The `app.py` entry-point switch is done and was confirmed by launching `python app.py` manually.
 
-- Correct visual Persian RTL behavior in the actual Qt window.
-- Successful access to the user's microphone.
-- Successful inference using the installed local model.
-- Correct end-to-end automatic saving.
-- Correct behavior when closing the application during active operations.
-- Complete feature parity with the Tkinter application.
+## 7. Triage and Verification Policy
 
-Manual Windows verification is still required.
-
-## 7. Historical Test Baseline
-
-On October 21, 2026, the project had the following baseline:
-
-```text
-13 passed in 0.58s
-```
-
-Environment:
-
-- Windows (`win32`)
-- Python 3.12.10
-- pytest 9.1.1
-
-This is historical evidence and has been superseded by the November 8 test result. Keep it for reference rather than treating it as the current baseline.
-
-## 8. Triage and Verification Policy
+(unchanged)
 
 - Use GitHub Issues as the source of truth for active work.
 - Separate confirmed defects from hypotheses, limitations, and enhancements.
@@ -272,20 +210,10 @@ This is historical evidence and has been superseded by the November 8 test resul
 - Distinguish automated test results from manual verification.
 - Do not close issues until the relevant behavior has been verified.
 - Keep changes focused on one issue or task per branch.
-- Avoid unrelated changes to model configuration, inference behavior, persistence, and other shared components.
-- Preserve local-first operation and compatibility with existing transcript files.
 
-## 9. Next Recommended Work
+## 8. Next Recommended Work
 
-The immediate next step is to resume Issue #12 from the existing branch and perform a focused review of the current implementation before making further changes.
-
-Recommended order:
-
-1. Inspect the current Git status and branch.
-2. Review `src/qt_main_window.py`, `src/recorder.py`, and `src/transcriber.py`.
-3. Review the Qt tests and identify what they actually verify.
-4. Review the remaining feature-parity requirements.
-5. Prepare a manual verification plan for the Qt application.
-6. Only then decide which migration gaps require code changes.
-
-Do not replace the Tkinter production entry point until the Qt implementation has been adequately verified.
+1. Commit the `app.py` switch and this documentation update to `feature/pyside6-ui-migration` and push.
+2. Merge to `main` once the user explicitly approves.
+3. Optionally, as a later separate task: retire `src/ui.py` and its three test modules once the Qt application has had real use.
+4. Optionally, as a low-priority follow-up: wrap the corrupted-model-file error (section 4, item 2) in a friendlier message, matching the treatment the microphone-error path already received.

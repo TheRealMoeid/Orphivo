@@ -1,11 +1,17 @@
 """Local Persian speech-to-text desktop application."""
-from src.ui import PersianSTTApp
+import sys
+
+from PySide6.QtWidgets import QApplication
+
+from src.qt_main_window import OrphivoMainWindow
 
 
-def main() -> None:
-    app = PersianSTTApp()
-    app.mainloop()
+def main() -> int:
+    app = QApplication(sys.argv)
+    window = OrphivoMainWindow()
+    window.show()
+    return app.exec()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
